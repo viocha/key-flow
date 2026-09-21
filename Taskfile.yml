@@ -1,0 +1,92 @@
+version: '3'
+
+vars:
+  APP_NAME: key-flow
+  BIN_DIR: bin
+  VITE_PORT: '{{.WAILS_VITE_PORT | default "9245"}}'
+  ARCH: '{{.ARCH | default "amd64"}}'
+
+tasks:
+  bindings:
+    summary: 生成 Wails TypeScript bindings
+    sources:
+      - '*.go'
+      - go.mod
+      - go.sum
+    generates:
+      - frontend/bindings/**/*
+    cmds:
+      - go mod tidy
+      - wails3 generate bindings -clean=true -ts -i
+
+  frontend:install:
+    internal: true
+    dir: frontend
+    sources:
+      - package.json
+      - bun.lock
+    generates:
+      - node_modules
+    cmds:
+      - bun install
+
+  frontend:
+    summary: 构建前端
+    dir: frontend
+    deps:
+      - frontend:install
+      - bindings
+    cmds:
+      - 'bun run {{if eq .DEV "true"}}build:dev{{else}}build{{end}}'
+
+  frontend:dev:
+    summary: 启动 Vite 开发服务器
+    dir: frontend
+    deps:
+      - frontend:install
+      - bindings
+    cmds:
+      - bun run dev -- --port {{.VITE_PORT}} --strictPort
+
+  syso:
+    internal: true
+    dir: build
+    sources:
+      - windows/icon.ico
+      - windows/wails.exe.manifest
+      - windows/info.json
+    generates:
+      - ../wails_windows_{{.ARCH}}.syso
+    cmds:
+      - wails3 generate syso -arch {{.ARCH}} -icon windows/icon.ico -manifest windows/wails.exe.manifest -info windows/info.json -out ../wails_windows_{{.ARCH}}.syso
+
+  build:
+    summary: 构建 Windows 可执行文件
+    deps:
+      - task: frontend
+        vars:
+          DEV: '{{.DEV}}'
+      - syso
+    cmds:
+      - pwsh -NoProfile -Command "New-Item -ItemType Directory -Force '{{.BIN_DIR}}' | Out-Null"
+      - 'go build {{if eq .DEV "true"}}-buildvcs=false -gcflags=all="-l"{{else}}-tags "production,devtools" -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui"{{end}} -o "{{.BIN_DIR}}/{{.APP_NAME}}.exe" .'
+      - pwsh -NoProfile -Command "Remove-Item 'wails_windows_{{.ARCH}}.syso' -ErrorAction SilentlyContinue"
+    env:
+      GOOS: windows
+      GOARCH: '{{.ARCH}}'
+      CGO_ENABLED: '0'
+
+  run:
+    summary: 运行 Windows 应用
+    cmds:
+      - pwsh -NoProfile -Command "& '.\{{.BIN_DIR}}\{{.APP_NAME}}.exe'"
+
+  dev:
+    summary: 启动 Wails 开发模式
+    cmds:
+      - wails3 dev -config ./build/config.yml -port {{.VITE_PORT}}
+
+  clean:
+    summary: 清理生成文件
+    cmds:
+      - pwsh -NoProfile -Command "Remove-Item '{{.BIN_DIR}}','frontend/dist','frontend/bindings' -Recurse -Force -ErrorAction SilentlyContinue; Remove-Item 'wails_windows_*.syso' -Force -ErrorAction SilentlyContinue"

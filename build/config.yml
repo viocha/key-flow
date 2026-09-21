@@ -1,0 +1,60 @@
+# This file contains the configuration for this project.
+# Windows-only project. Build assets are maintained directly under build/windows.
+# Note that this will overwrite any changes you have made to the assets.
+version: '3'
+
+# This information is used to generate the build assets.
+info:
+  companyName: "Key Flow" # The name of the company
+  productName: "Key Flow" # The name of the application
+  productIdentifier: "dev.keyflow.desktop" # The unique product identifier
+  description: "Windows 全局快捷键与触发键工具" # The application description
+  copyright: "(c) 2026" # Copyright text
+  comments: "Key Flow" # Comments
+  version: "0.0.1" # The application version
+# Dev mode configuration
+dev_mode:
+  root_path: .
+  log_level: warn
+  debounce: 1000
+  ignore:
+    dir:
+      - .git
+      - node_modules
+      - frontend
+      - bin
+    file:
+      - .gitignore
+      - .gitkeep
+      - "*_test.go"
+    watched_extension:
+      - "*.go"
+      - "*.js" # Watch for changes to JS/TS files included using the //wails:include directive.
+      - "*.ts" # The frontend directory will be excluded entirely by the setting above.
+    git_ignore: true
+  executes:
+    - cmd: wails3 build DEV=true
+      type: blocking
+    - cmd: wails3 task frontend:dev
+      type: background
+    - cmd: wails3 task run
+      type: primary
+
+# File Associations
+# More information at: https://v3.wails.io/noit/done/yet
+fileAssociations:
+#  - ext: wails
+#    name: Wails
+#    description: Wails Application File
+#    iconName: wailsFileIcon
+#    role: Editor
+#  - ext: jpg
+#    name: JPEG
+#    description: Image File
+#    iconName: jpegFileIcon
+#    role: Editor
+#    mimeType: image/jpeg  # (optional)
+
+# Other data
+other:
+  - name: My Other Data
