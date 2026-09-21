@@ -33,7 +33,7 @@ func main() {
 	var overlay *nativeGestureOverlay
 	app := application.New(application.Options{
 		Name:        "key-flow",
-		Description: "Key Flow global hotkey and trigger tool",
+		Description: "Key Flow",
 		SingleInstance: &application.SingleInstanceOptions{
 			UniqueID: "dev.keyflow.desktop",
 			ExitCode: 0,

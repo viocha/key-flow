@@ -18,7 +18,7 @@
         PublisherName="CN=My Company"
         PublisherDisplayName="My Company"
         Version="0.1.0.0"
-        PackageDescription="Key Flow global hotkey and trigger tool">
+        PackageDescription="Key Flow">
         <Capabilities>
             <Capability Name="runFullTrust" />
             
@@ -26,7 +26,7 @@
         <Applications>
             <Application
                 Id="dev.keyflow.app"
-                Description="Key Flow global hotkey and trigger tool"
+                Description="Key Flow"
                 DisplayName="Key Flow"
                 ExecutableName="key-flow.exe"
                 EntryPoint="Windows.FullTrustApplication">
@@ -43,7 +43,7 @@
             <Framework>false</Framework>
             <DisplayName>Key Flow</DisplayName>
             <PublisherDisplayName>My Company</PublisherDisplayName>
-            <Description>Key Flow global hotkey and trigger tool</Description>
+            <Description>Key Flow</Description>
             <Logo>Assets\AppIcon.png</Logo>
         </Properties>
     </PackageInformation>

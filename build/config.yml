@@ -8,7 +8,7 @@ info:
   companyName: "Key Flow" # The name of the company
   productName: "Key Flow" # The name of the application
   productIdentifier: "dev.keyflow.desktop" # The unique product identifier
-  description: "Key Flow global hotkey and trigger tool" # The application description
+  description: "Key Flow" # The application description
   copyright: "(c) 2026" # Copyright text
   comments: "Key Flow" # Comments
   version: "0.0.1" # The application version
