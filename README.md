@@ -1,6 +1,6 @@
 # Key Flow
 
-Windows 全局快捷键与触发键工具，使用 Go + Wails v3、React、shadcn/ui 和 Bun 构建。
+Key Flow 是一个 Windows 全局快捷键与触发键工具，使用 Go + Wails v3、React、shadcn/ui 和 Bun 构建。
 
 ## 当前能力
 
