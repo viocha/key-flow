@@ -4,13 +4,13 @@ import "github.com/wailsapp/wails/v3/pkg/application"
 
 func buildTrayMenu(
 	app *application.App,
-	manager *application.WebviewWindow,
+	openManager func(),
 	service *AppService,
 	config AppConfig,
 ) *application.Menu {
 	menu := app.NewMenu()
 	menu.Add("打开窗口").OnClick(func(*application.Context) {
-		manager.Show().Focus()
+		openManager()
 	})
 	menu.AddSeparator()
 

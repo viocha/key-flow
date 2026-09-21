@@ -4,6 +4,7 @@ import (
 	"embed"
 	"log"
 	"os"
+	"sync"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
@@ -30,10 +31,15 @@ func main() {
 	service := NewAppService(store, engine)
 
 	var manager *application.WebviewWindow
+	var managerMu sync.Mutex
+	var openManager func()
 	var overlay *nativeGestureOverlay
 	app := application.New(application.Options{
 		Name:        "key-flow",
 		Description: "Key Flow",
+		Windows: application.WindowsOptions{
+			DisableQuitOnLastWindowClosed: true,
+		},
 		SingleInstance: &application.SingleInstanceOptions{
 			UniqueID: "dev.keyflow.desktop",
 			ExitCode: 0,
@@ -41,8 +47,8 @@ func main() {
 				if hasArgument(data.Args, "--hidden") {
 					return
 				}
-				if manager != nil {
-					manager.Show().Focus()
+				if openManager != nil {
+					openManager()
 				}
 			},
 		},
@@ -63,27 +69,42 @@ func main() {
 	service.app = app
 	app.SetIcon(appIcon)
 
-	manager = app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Name:                   "manager",
-		Title:                  "Key Flow",
-		Width:                  1040,
-		Height:                 700,
-		MinWidth:               840,
-		MinHeight:              560,
-		BackgroundColour:       application.NewRGB(255, 255, 255),
-		Hidden:                 startupMode,
-		URL:                    "/",
-		DevToolsEnabled:        true,
-		OpenInspectorOnStartup: true,
-		KeyBindings: map[string]func(window application.Window){
-			"F12": func(window application.Window) {
-				window.OpenDevTools()
-			},
-			"ctrl+shift+i": func(window application.Window) {
-				window.OpenDevTools()
-			},
-		},
-	})
+	openManager = func() {
+		managerMu.Lock()
+		current := manager
+		if current == nil {
+			current = app.Window.NewWithOptions(application.WebviewWindowOptions{
+				Name:                   "manager",
+				Title:                  "Key Flow",
+				Width:                  1040,
+				Height:                 700,
+				MinWidth:               840,
+				MinHeight:              560,
+				BackgroundColour:       application.NewRGB(255, 255, 255),
+				URL:                    "/",
+				DevToolsEnabled:        true,
+				OpenInspectorOnStartup: true,
+				KeyBindings: map[string]func(window application.Window){
+					"F12": func(window application.Window) {
+						window.OpenDevTools()
+					},
+					"ctrl+shift+i": func(window application.Window) {
+						window.OpenDevTools()
+					},
+				},
+			})
+			manager = current
+			current.RegisterHook(events.Common.WindowClosing, func(*application.WindowEvent) {
+				managerMu.Lock()
+				if manager == current {
+					manager = nil
+				}
+				managerMu.Unlock()
+			})
+		}
+		managerMu.Unlock()
+		current.Show().Focus()
+	}
 
 	engine.SetGestureOverlayHandler(func(event GestureOverlayEvent) {
 		if overlay != nil {
@@ -91,26 +112,24 @@ func main() {
 		}
 	})
 
-	manager.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
-		manager.Hide()
-		event.Cancel()
-	})
-
 	tray := app.SystemTray.New()
 	tray.SetIcon(appIcon)
 	tray.SetTooltip("Key Flow")
 	service.onConfigChanged = func(config AppConfig) {
-		tray.SetMenu(buildTrayMenu(app, manager, service, config))
+		tray.SetMenu(buildTrayMenu(app, openManager, service, config))
 	}
-	tray.SetMenu(buildTrayMenu(app, manager, service, store.Snapshot()))
+	tray.SetMenu(buildTrayMenu(app, openManager, service, store.Snapshot()))
 	tray.OnClick(func() {
-		manager.Show().Focus()
+		openManager()
 	})
 
 	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
 		overlay = createNativeGestureOverlay()
 		if err := engine.Start(); err != nil {
 			log.Printf("启动全局输入引擎失败: %v", err)
+		}
+		if !startupMode {
+			openManager()
 		}
 	})
 
