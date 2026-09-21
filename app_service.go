@@ -68,5 +68,5 @@ func (s *AppService) SetStartupEnabled(enabled bool) (bool, error) {
 	if err := setStartupTaskEnabled(enabled); err != nil {
 		return false, err
 	}
-	return startupTaskEnabled()
+	return enabled, nil
 }

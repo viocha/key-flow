@@ -120,7 +120,6 @@ function App() {
   const [presets, setPresets] = useState<ActionPreset[]>([])
   const [configPath, setConfigPath] = useState("")
   const [startupEnabled, setStartupEnabled] = useState<boolean | null>(null)
-  const [startupSaving, setStartupSaving] = useState(false)
   const [shortcutDialog, setShortcutDialog] = useState<ShortcutDialogState>({ open: false })
   const [layerDialog, setLayerDialog] = useState<LayerDialogState>({ open: false })
   const [bindingDialog, setBindingDialog] = useState<BindingDialogState>({ open: false })
@@ -131,6 +130,7 @@ function App() {
   const [showInitialLoading, setShowInitialLoading] = useState(false)
   const lastSavedRef = useRef("")
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const startupWriteRef = useRef(Promise.resolve())
 
   useEffect(() => {
     const loadingTimer = setTimeout(() => setShowInitialLoading(true), 500)
@@ -213,17 +213,20 @@ function App() {
   }, [config])
 
   const updateStartup = useCallback((enabled: boolean) => {
-    setStartupSaving(true)
-    AppService.SetStartupEnabled(enabled)
-      .then((actual) => setStartupEnabled(actual))
-      .catch((error) => {
+    setStartupEnabled(enabled)
+    startupWriteRef.current = startupWriteRef.current.then(async () => {
+      try {
+        const actual = await AppService.SetStartupEnabled(enabled)
+        setStartupEnabled((current) => (current === enabled ? actual : current))
+      } catch (error) {
+        setStartupEnabled((current) => (current === enabled ? !enabled : current))
         toast.add({
           type: "error",
           title: "开机自启设置失败",
           description: errorMessage(error),
         })
-      })
-      .finally(() => setStartupSaving(false))
+      }
+    })
   }, [])
 
   const profile = useMemo(
@@ -672,7 +675,6 @@ function App() {
                   config={config}
                   configPath={configPath}
                   startupEnabled={startupEnabled}
-                  startupSaving={startupSaving}
                   onStartupChange={updateStartup}
                   onChange={setConfig}
                 />
@@ -902,14 +904,12 @@ function SettingsPanel({
   config,
   configPath,
   startupEnabled,
-  startupSaving,
   onStartupChange,
   onChange,
 }: {
   config: UiConfig
   configPath: string
   startupEnabled: boolean | null
-  startupSaving: boolean
   onStartupChange: (enabled: boolean) => void
   onChange: (config: UiConfig) => void
 }) {
@@ -924,7 +924,7 @@ function SettingsPanel({
             <div className="text-sm font-medium">开机自启</div>
             <Switch
               checked={startupEnabled ?? false}
-              disabled={startupEnabled === null || startupSaving}
+              disabled={startupEnabled === null}
               onCheckedChange={onStartupChange}
               aria-label="开机自启"
             />
