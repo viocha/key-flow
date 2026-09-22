@@ -31,6 +31,7 @@ import {
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
 import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { NumberInput } from "@/components/ui/number-input"
 import {
   Select,
   SelectContent,
@@ -402,21 +403,17 @@ export function MouseBindingsPanel({
             {layer.windowOperations.scaleWheel && (
               <div className="ml-auto flex items-center gap-2">
                 <span className="text-xs text-muted-foreground">每格</span>
-                <Input
+                <NumberInput
                   className="w-20"
-                  type="number"
                   min={1}
                   max={50}
                   value={layer.windowOperations.scaleStepPercent}
-                  onChange={(event) =>
+                  onValueChange={(scaleStepPercent) =>
                     onChange({
                       ...layer,
                       windowOperations: {
                         ...layer.windowOperations,
-                        scaleStepPercent: Math.max(
-                          1,
-                          Math.min(50, Number(event.target.value) || 1),
-                        ),
+                        scaleStepPercent,
                       },
                     })
                   }

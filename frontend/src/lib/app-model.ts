@@ -212,6 +212,16 @@ export function mouseShortcutLabel(binding: MouseShortcutBinding) {
   ].join(" + ")
 }
 
+export function hotkeyInputKeys(rule: HotkeyRule) {
+  if (rule.mouseInput) {
+    return [
+      ...normalizeMouseModifiers(rule.modifiers),
+      mouseInputLabel(rule.mouseInput),
+    ]
+  }
+  return rule.keys ?? []
+}
+
 export function mouseInputForTrigger(trigger: string) {
   switch (trigger) {
     case "MouseRight":
@@ -317,7 +327,6 @@ export function actionOrDefault(action: Action | null | undefined): Action {
 export function defaultHotkey(): HotkeyRule {
   return {
     id: newID("hotkey"),
-    name: "新快捷键",
     enabled: true,
     keys: ["Ctrl", "Alt", "K"],
     action: defaultAction(),

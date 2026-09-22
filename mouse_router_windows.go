@@ -217,8 +217,32 @@ func (s *windowsInputState) handleMouse(message uint32, data *msLLHookStruct) bo
 		return false
 	}
 
+	if button, isDown, _ := mouseButtonEvent(message, mouseData); isDown {
+		shortcutKey := s.currentMouseShortcutKeyLocked(button)
+		if action, ok := config.mouseHotkeys[shortcutKey]; ok {
+			s.engine.enqueueActionContext(
+				action,
+				captureActionContext(targetWindowAtPoint(pt), pt),
+			)
+			s.pointerCapture = &pointerCapture{button: button, swallow: true}
+			return true
+		}
+	}
+
 	if message == wmMouseWheel {
 		sign := wheelDeltaSign(mouseData)
+		input := "wheelDown"
+		if sign > 0 {
+			input = "wheelUp"
+		}
+		shortcutKey := s.currentMouseShortcutKeyLocked(input)
+		if action, ok := config.mouseHotkeys[shortcutKey]; ok {
+			s.engine.enqueueActionContext(
+				action,
+				captureActionContext(targetWindowAtPoint(pt), pt),
+			)
+			return true
+		}
 		for zone, rule := range config.edgeWheels {
 			if !pointInEdgeZone(pt, zone, rule.marginPX) {
 				continue

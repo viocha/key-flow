@@ -3,12 +3,12 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
-func testHotkey(id, name string, enabled bool, keys ...string) HotkeyRule {
+func testHotkey(id string, enabled bool, keys ...string) HotkeyRule {
 	return HotkeyRule{
 		ID:      id,
-		Name:    name,
 		Enabled: enabled,
 		Keys:    keys,
 		Action:  Action{Type: ActionKeyStroke, Keys: []string{"Ctrl", "C"}},
@@ -52,17 +52,43 @@ func TestDefaultConfigValidatesAndCompiles(t *testing.T) {
 	if len(compiled.layers) != 0 {
 		t.Fatalf("default layers = %d, want 0", len(compiled.layers))
 	}
+	if compiled.keyInterval != 0 {
+		t.Fatalf("default key interval = %v, want 0", compiled.keyInterval)
+	}
+}
+
+func TestCompileConfigUsesDefaultKeyInterval(t *testing.T) {
+	config := defaultConfig()
+	config.Settings.DefaultKeyIntervalMS = 25
+
+	compiled, err := compileConfig(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if compiled.keyInterval != 25*time.Millisecond {
+		t.Fatalf("key interval = %v, want 25ms", compiled.keyInterval)
+	}
+}
+
+func TestValidateConfigRejectsInvalidDefaultKeyInterval(t *testing.T) {
+	config := defaultConfig()
+	config.Settings.DefaultKeyIntervalMS = 501
+
+	err := validateConfig(config)
+	if err == nil || !strings.Contains(err.Error(), "默认按键间隔") {
+		t.Fatalf("expected default key interval error, got %v", err)
+	}
 }
 
 func TestCompileConfigUsesActiveProfileOnly(t *testing.T) {
 	config := defaultConfig()
 	config.Profiles[0].Hotkeys = []HotkeyRule{
-		testHotkey("active-rule", "当前规则", true, "Ctrl", "Alt", "T"),
+		testHotkey("active-rule", true, "Ctrl", "Alt", "T"),
 	}
 	config.Profiles = append(config.Profiles, Profile{
 		ID:                "other",
 		Name:              "其他",
-		Hotkeys:           []HotkeyRule{testHotkey("other-rule", "其他规则", true, "Ctrl", "K")},
+		Hotkeys:           []HotkeyRule{testHotkey("other-rule", true, "Ctrl", "K")},
 		EdgeWheelMarginPX: 4,
 	})
 
@@ -81,11 +107,73 @@ func TestCompileConfigUsesActiveProfileOnly(t *testing.T) {
 	}
 }
 
+func TestCompileConfigSupportsGlobalMouseHotkey(t *testing.T) {
+	config := defaultConfig()
+	config.Profiles[0].Hotkeys = []HotkeyRule{{
+		ID:         "alt-wheel-up",
+		Enabled:    true,
+		MouseInput: "wheelUp",
+		Modifiers:  []string{"Alt"},
+		Action:     Action{Type: ActionKeyStroke, Keys: []string{"Ctrl", "Tab"}},
+	}}
+
+	if err := validateConfig(config); err != nil {
+		t.Fatalf("global mouse hotkey should be valid: %v", err)
+	}
+	compiled, err := compileConfig(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := compiled.mouseHotkeys["Alt+wheelUp"]; !ok {
+		t.Fatal("global mouse hotkey was not compiled")
+	}
+}
+
+func TestValidateConfigRejectsGlobalMouseHotkeyWithoutModifier(t *testing.T) {
+	config := defaultConfig()
+	config.Profiles[0].Hotkeys = []HotkeyRule{{
+		ID:         "wheel-up",
+		Enabled:    true,
+		MouseInput: "wheelUp",
+		Action:     Action{Type: ActionKeyStroke, Keys: []string{"Ctrl", "Tab"}},
+	}}
+
+	err := validateConfig(config)
+	if err == nil || !strings.Contains(err.Error(), "至少需要一个修饰键") {
+		t.Fatalf("expected missing modifier error, got %v", err)
+	}
+}
+
+func TestValidateConfigRejectsDuplicateGlobalMouseHotkey(t *testing.T) {
+	config := defaultConfig()
+	config.Profiles[0].Hotkeys = []HotkeyRule{
+		{
+			ID:         "first",
+			Enabled:    true,
+			MouseInput: "left",
+			Modifiers:  []string{"Alt", "Shift"},
+			Action:     Action{Type: ActionKeyStroke, Keys: []string{"Ctrl", "Tab"}},
+		},
+		{
+			ID:         "second",
+			Enabled:    true,
+			MouseInput: "left",
+			Modifiers:  []string{"Shift", "Alt"},
+			Action:     Action{Type: ActionKeyStroke, Keys: []string{"Ctrl", "W"}},
+		},
+	}
+
+	err := validateConfig(config)
+	if err == nil || !strings.Contains(err.Error(), "快捷键冲突") {
+		t.Fatalf("expected duplicate global mouse hotkey error, got %v", err)
+	}
+}
+
 func TestValidateConfigRejectsEnabledHotkeyConflict(t *testing.T) {
 	config := defaultConfig()
 	config.Profiles[0].Hotkeys = []HotkeyRule{
-		testHotkey("first", "第一个", true, "Ctrl", "Alt", "T"),
-		testHotkey("second", "第二个", true, "Alt", "Ctrl", "T"),
+		testHotkey("first", true, "Ctrl", "Alt", "T"),
+		testHotkey("second", true, "Alt", "Ctrl", "T"),
 	}
 
 	err := validateConfig(config)
@@ -97,8 +185,8 @@ func TestValidateConfigRejectsEnabledHotkeyConflict(t *testing.T) {
 func TestValidateConfigAllowsDisabledHotkeyConflict(t *testing.T) {
 	config := defaultConfig()
 	config.Profiles[0].Hotkeys = []HotkeyRule{
-		testHotkey("first", "第一个", true, "Ctrl", "Alt", "T"),
-		testHotkey("second", "备用快捷键", false, "Alt", "Ctrl", "T"),
+		testHotkey("first", true, "Ctrl", "Alt", "T"),
+		testHotkey("second", false, "Alt", "Ctrl", "T"),
 	}
 
 	if err := validateConfig(config); err != nil {

@@ -2,53 +2,70 @@
 
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
-func executeEditAction(action Action) error {
+type editActionRunner struct {
+	interval time.Duration
+	started  bool
+}
+
+func (r *editActionRunner) send(keys []string) error {
+	if r.started && r.interval > 0 {
+		time.Sleep(r.interval)
+	}
+	r.started = true
+	return sendKeyStroke(keys)
+}
+
+func executeEditAction(action Action, keyInterval time.Duration) error {
+	runner := &editActionRunner{interval: keyInterval}
 	switch action.EditCommand {
 	case "deleteLine":
-		if err := selectCurrentLine(true); err != nil {
+		if err := selectCurrentLine(runner, true); err != nil {
 			return err
 		}
-		return sendKeyStroke([]string{"Delete"})
+		return runner.send([]string{"Delete"})
 	case "insertLineBelow":
-		if err := sendKeyStroke([]string{"End"}); err != nil {
+		if err := runner.send([]string{"End"}); err != nil {
 			return err
 		}
-		return sendKeyStroke([]string{"Enter"})
+		return runner.send([]string{"Enter"})
 	case "insertLineAbove":
-		if err := moveToLineStart(); err != nil {
+		if err := moveToLineStart(runner); err != nil {
 			return err
 		}
-		if err := sendKeyStroke([]string{"Enter"}); err != nil {
+		if err := runner.send([]string{"Enter"}); err != nil {
 			return err
 		}
-		return sendKeyStroke([]string{"ArrowUp"})
+		return runner.send([]string{"ArrowUp"})
 	case "selectLine":
-		return selectCurrentLine(false)
+		return selectCurrentLine(runner, false)
 	case "selectLineWithBreak":
-		return selectCurrentLine(true)
+		return selectCurrentLine(runner, true)
 	default:
 		return fmt.Errorf("未知编辑命令: %s", action.EditCommand)
 	}
 }
 
-func moveToLineStart() error {
-	if err := sendKeyStroke([]string{"Home"}); err != nil {
+func moveToLineStart(runner *editActionRunner) error {
+	if err := runner.send([]string{"Home"}); err != nil {
 		return err
 	}
-	return sendKeyStroke([]string{"Home"})
+	return runner.send([]string{"Home"})
 }
 
-func selectCurrentLine(includeLineBreak bool) error {
-	if err := moveToLineStart(); err != nil {
+func selectCurrentLine(runner *editActionRunner, includeLineBreak bool) error {
+	if err := moveToLineStart(runner); err != nil {
 		return err
 	}
-	if err := sendKeyStroke([]string{"Shift", "End"}); err != nil {
+	if err := runner.send([]string{"Shift", "End"}); err != nil {
 		return err
 	}
 	if includeLineBreak {
-		return sendKeyStroke([]string{"Shift", "ArrowRight"})
+		return runner.send([]string{"Shift", "ArrowRight"})
 	}
 	return nil
 }

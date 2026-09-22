@@ -29,6 +29,7 @@ import {
   ShortcutDialog,
 } from "@/components/rule-dialogs"
 import { MouseBindingsPanel } from "@/components/trigger-features"
+import { Badge } from "@/components/ui/badge"
 import { Button, buttonVariants } from "@/components/ui/button"
 import {
   Card,
@@ -56,6 +57,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { NumberInput } from "@/components/ui/number-input"
 import { Separator } from "@/components/ui/separator"
 import {
   Sidebar,
@@ -80,6 +82,7 @@ import {
   activeProfile,
   defaultGestureGroup,
   defaultLayer,
+  hotkeyInputKeys,
   normalizeConfig,
   triggerLabel,
   type UiConfig,
@@ -489,10 +492,16 @@ function App() {
                     onClick={() => setNavigation("general")}
                   >
                     <span>通用快捷键</span>
+                    {!profile.hotkeysEnabled && (
+                      <Badge
+                        variant="secondary"
+                        className="h-4 px-1.5 text-[10px] font-normal text-muted-foreground"
+                      >
+                        已禁用
+                      </Badge>
+                    )}
                   </SidebarMenuButton>
-                  <SidebarMenuBadge>
-                    {profile.hotkeysEnabled ? profile.hotkeys.length : "已禁用"}
-                  </SidebarMenuBadge>
+                  <SidebarMenuBadge>{profile.hotkeys.length}</SidebarMenuBadge>
                 </SidebarMenuItem>
                 <SidebarMenuItem>
                   <SidebarMenuButton
@@ -500,12 +509,16 @@ function App() {
                     onClick={() => setNavigation("edges")}
                   >
                     <span>屏幕边缘</span>
+                    {!profile.edgeWheelsEnabled && (
+                      <Badge
+                        variant="secondary"
+                        className="h-4 px-1.5 text-[10px] font-normal text-muted-foreground"
+                      >
+                        已禁用
+                      </Badge>
+                    )}
                   </SidebarMenuButton>
-                  <SidebarMenuBadge>
-                    {profile.edgeWheelsEnabled
-                      ? profile.edgeWheels.length
-                      : "已禁用"}
-                  </SidebarMenuBadge>
+                  <SidebarMenuBadge>{profile.edgeWheels.length}</SidebarMenuBadge>
                 </SidebarMenuItem>
               </SidebarMenu>
             </SidebarGroupContent>
@@ -531,17 +544,23 @@ function App() {
                       onClick={() => setNavigation(`layer:${layer.id}`)}
                     >
                       <span>{triggerLabel(layer.trigger)}</span>
+                      {!layer.enabled && (
+                        <Badge
+                          variant="secondary"
+                          className="h-4 px-1.5 text-[10px] font-normal text-muted-foreground"
+                        >
+                          已禁用
+                        </Badge>
+                      )}
                     </SidebarMenuButton>
                     <SidebarMenuBadge>
-                      {layer.enabled
-                        ? layer.bindings.length +
-                          layer.mouseShortcuts.length +
-                          (layer.windowOperations.enabled
-                            ? (layer.windowOperations.moveButton ? 1 : 0) +
-                              (layer.windowOperations.resizeButton ? 1 : 0) +
-                              (layer.windowOperations.scaleWheel ? 1 : 0)
-                            : 0)
-                        : "已禁用"}
+                      {layer.bindings.length +
+                        layer.mouseShortcuts.length +
+                        (layer.windowOperations.enabled
+                          ? (layer.windowOperations.moveButton ? 1 : 0) +
+                            (layer.windowOperations.resizeButton ? 1 : 0) +
+                            (layer.windowOperations.scaleWheel ? 1 : 0)
+                          : 0)}
                     </SidebarMenuBadge>
                   </SidebarMenuItem>
                 ))}
@@ -573,10 +592,16 @@ function App() {
                       onClick={() => setNavigation(`gesture:${group.id}`)}
                     >
                       <span>{triggerLabel(group.trigger)}</span>
+                      {!group.enabled && (
+                        <Badge
+                          variant="secondary"
+                          className="h-4 px-1.5 text-[10px] font-normal text-muted-foreground"
+                        >
+                          已禁用
+                        </Badge>
+                      )}
                     </SidebarMenuButton>
-                    <SidebarMenuBadge>
-                      {group.enabled ? group.bindings.length : "已禁用"}
-                    </SidebarMenuBadge>
+                    <SidebarMenuBadge>{group.bindings.length}</SidebarMenuBadge>
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>
@@ -818,10 +843,7 @@ function HotkeysPanel({
               {index > 0 && <Separator />}
               <EditableListRow onEdit={() => onEdit(rule)}>
                 <div className="w-40 shrink-0">
-                  <KeyChord keys={rule.keys} />
-                </div>
-                <div className="w-36 shrink-0 truncate text-sm font-medium">
-                  {rule.name}
+                  <KeyChord keys={hotkeyInputKeys(rule)} />
                 </div>
                 <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
                   {actionSummary(rule.action)}
@@ -831,7 +853,7 @@ function HotkeysPanel({
                     size="sm"
                     checked={rule.enabled}
                     onCheckedChange={(enabled) => onToggle(rule.id, enabled)}
-                    aria-label={"启用 " + rule.name}
+                    aria-label={"启用 " + hotkeyInputKeys(rule).join(" + ")}
                   />
                 </div>
                 <div onClick={stopListRowClick} onKeyDown={stopListRowClick}>
@@ -983,23 +1005,53 @@ function SettingsPanel({
           <FieldGroup>
             <Field>
               <FieldLabel htmlFor="default-hold">默认长按时间</FieldLabel>
-              <Input
+              <NumberInput
                 id="default-hold"
-                type="number"
                 min={50}
                 max={1500}
                 value={config.settings.defaultHoldMs}
-                onChange={(event) =>
+                onValueChange={(defaultHoldMs) =>
                   onChange({
                     ...config,
                     settings: {
                       ...config.settings,
-                      defaultHoldMs: Number(event.target.value) || 200,
+                      defaultHoldMs,
                     },
                   })
                 }
               />
               <FieldDescription>50–1500 ms</FieldDescription>
+            </Field>
+          </FieldGroup>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>按键</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="default-key-interval">默认按键间隔</FieldLabel>
+              <NumberInput
+                id="default-key-interval"
+                min={0}
+                max={500}
+                value={config.settings.defaultKeyIntervalMs}
+                onValueChange={(defaultKeyIntervalMs) =>
+                  onChange({
+                    ...config,
+                    settings: {
+                      ...config.settings,
+                      defaultKeyIntervalMs,
+                    },
+                  })
+                }
+              />
+              <FieldDescription>
+                0–500 ms；用于内置编辑操作连续模拟按键之间的等待
+              </FieldDescription>
             </Field>
           </FieldGroup>
         </CardContent>
@@ -1013,19 +1065,18 @@ function SettingsPanel({
           <FieldGroup>
             <Field>
               <FieldLabel htmlFor="gesture-timeout">无操作超时</FieldLabel>
-              <Input
+              <NumberInput
                 id="gesture-timeout"
-                type="number"
                 min={500}
                 max={10000}
                 step={100}
                 value={config.settings.gestureTimeoutMs}
-                onChange={(event) =>
+                onValueChange={(gestureTimeoutMs) =>
                   onChange({
                     ...config,
                     settings: {
                       ...config.settings,
-                      gestureTimeoutMs: Number(event.target.value) || 1000,
+                      gestureTimeoutMs,
                     },
                   })
                 }

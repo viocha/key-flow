@@ -108,9 +108,10 @@ export interface GesturePoint {
 
 export interface HotkeyRule {
     "id": string;
-    "name": string;
     "enabled": boolean;
-    "keys": string[] | null;
+    "keys"?: string[] | null;
+    "mouseInput"?: string;
+    "modifiers"?: string[] | null;
     "action": Action;
 }
 
@@ -140,6 +141,7 @@ export interface Profile {
 
 export interface Settings {
     "defaultHoldMs": number;
+    "defaultKeyIntervalMs": number;
     "gestureTimeoutMs": number;
 }
 

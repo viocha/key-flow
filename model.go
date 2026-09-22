@@ -35,11 +35,12 @@ type Action struct {
 }
 
 type HotkeyRule struct {
-	ID      string   `json:"id"`
-	Name    string   `json:"name"`
-	Enabled bool     `json:"enabled"`
-	Keys    []string `json:"keys"`
-	Action  Action   `json:"action"`
+	ID         string   `json:"id"`
+	Enabled    bool     `json:"enabled"`
+	Keys       []string `json:"keys,omitempty"`
+	MouseInput string   `json:"mouseInput,omitempty"`
+	Modifiers  []string `json:"modifiers,omitempty"`
+	Action     Action   `json:"action"`
 }
 
 type LayerBinding struct {
@@ -137,8 +138,9 @@ type Profile struct {
 }
 
 type Settings struct {
-	DefaultHoldMS    int `json:"defaultHoldMs"`
-	GestureTimeoutMS int `json:"gestureTimeoutMs"`
+	DefaultHoldMS        int `json:"defaultHoldMs"`
+	DefaultKeyIntervalMS int `json:"defaultKeyIntervalMs"`
+	GestureTimeoutMS     int `json:"gestureTimeoutMs"`
 }
 
 type AppConfig struct {

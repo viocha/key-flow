@@ -99,8 +99,9 @@ func defaultConfig() AppConfig {
 		Enabled:         true,
 		ActiveProfileID: "profile-default",
 		Settings: Settings{
-			DefaultHoldMS:    200,
-			GestureTimeoutMS: 1000,
+			DefaultHoldMS:        200,
+			DefaultKeyIntervalMS: 0,
+			GestureTimeoutMS:     1000,
 		},
 		Profiles: []Profile{
 			{
@@ -136,9 +137,6 @@ func normalizeConfig(config AppConfig) AppConfig {
 		}
 		if profile.EdgeWheels == nil {
 			profile.EdgeWheels = []EdgeWheelRule{}
-		}
-		for hi := range profile.Hotkeys {
-			profile.Hotkeys[hi].Name = strings.TrimSpace(profile.Hotkeys[hi].Name)
 		}
 		for li := range profile.Layers {
 			layer := &profile.Layers[li]
@@ -192,6 +190,9 @@ func validateConfig(config AppConfig) error {
 	if config.Settings.DefaultHoldMS < 50 || config.Settings.DefaultHoldMS > 1500 {
 		return errors.New("默认触发延迟须为 50–1500 毫秒")
 	}
+	if config.Settings.DefaultKeyIntervalMS < 0 || config.Settings.DefaultKeyIntervalMS > 500 {
+		return errors.New("默认按键间隔须为 0–500 毫秒")
+	}
 	if config.Settings.GestureTimeoutMS < 500 || config.Settings.GestureTimeoutMS > 10000 {
 		return errors.New("手势无操作超时须为 500–10000 毫秒")
 	}
@@ -213,23 +214,49 @@ func validateConfig(config AppConfig) error {
 			activeFound = true
 		}
 
-		hotkeyChords := map[string]string{}
+		hotkeyChords := map[string]struct{}{}
 		for _, rule := range profile.Hotkeys {
-			if rule.ID == "" || rule.Name == "" {
-				return errors.New("快捷键规则的 ID 和名称不能为空")
+			if rule.ID == "" {
+				return errors.New("快捷键规则的 ID 不能为空")
 			}
-			chord, err := canonicalChord(rule.Keys)
-			if err != nil {
-				return fmt.Errorf("快捷键 %q 无效: %w", rule.Name, err)
+			var shortcutKey string
+			if rule.MouseInput != "" {
+				if len(rule.Keys) != 0 {
+					return errors.New("通用快捷键不能同时配置键盘按键和鼠标输入")
+				}
+				if !isSupportedMouseShortcutInput(rule.MouseInput) {
+					return fmt.Errorf("通用快捷键使用了不支持的鼠标输入: %s", rule.MouseInput)
+				}
+				modifiers, err := canonicalModifiers(rule.Modifiers)
+				if err != nil {
+					return fmt.Errorf("通用快捷键的修饰键无效: %w", err)
+				}
+				if len(modifiers) == 0 {
+					return errors.New("通用鼠标快捷键至少需要一个修饰键")
+				}
+				key, err := mouseShortcutKey(modifiers, rule.MouseInput)
+				if err != nil {
+					return fmt.Errorf("通用快捷键无效: %w", err)
+				}
+				shortcutKey = "mouse:" + key
+			} else {
+				if len(rule.Modifiers) != 0 {
+					return errors.New("通用快捷键未配置鼠标输入，不能单独设置鼠标修饰键")
+				}
+				chord, err := canonicalChord(rule.Keys)
+				if err != nil {
+					return fmt.Errorf("通用快捷键无效: %w", err)
+				}
+				shortcutKey = "key:" + chord
 			}
 			if rule.Enabled {
-				if previous, exists := hotkeyChords[chord]; exists {
-					return fmt.Errorf("快捷键冲突: %q 与 %q 都使用 %s", previous, rule.Name, chord)
+				if _, exists := hotkeyChords[shortcutKey]; exists {
+					return fmt.Errorf("快捷键冲突: 重复使用 %s", strings.TrimPrefix(strings.TrimPrefix(shortcutKey, "key:"), "mouse:"))
 				}
-				hotkeyChords[chord] = rule.Name
+				hotkeyChords[shortcutKey] = struct{}{}
 			}
 			if err := validateAction(rule.Action, 0); err != nil {
-				return fmt.Errorf("快捷键 %q 的动作无效: %w", rule.Name, err)
+				return fmt.Errorf("通用快捷键动作无效: %w", err)
 			}
 		}
 

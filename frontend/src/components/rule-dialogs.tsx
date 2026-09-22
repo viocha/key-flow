@@ -23,6 +23,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { NumberInput } from "@/components/ui/number-input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Select,
@@ -32,12 +33,32 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import {
   defaultBinding,
   defaultHotkey,
   defaultLayer,
+  mouseInputLabel,
+  normalizeMouseModifiers,
   type UiLayer,
 } from "@/lib/app-model"
+
+const shortcutInputTypes = {
+  keyboard: "键盘",
+  mouse: "鼠标",
+}
+
+const shortcutMouseInputs = [
+  "left",
+  "right",
+  "middle",
+  "back",
+  "forward",
+  "wheelUp",
+  "wheelDown",
+] as const
+
+const shortcutMouseModifiers = ["Ctrl", "Shift", "Alt", "Win"] as const
 
 export function ShortcutDialog({
   open,
@@ -53,6 +74,10 @@ export function ShortcutDialog({
   onSave: (rule: HotkeyRule) => void
 }) {
   const [draft, setDraft] = useState<HotkeyRule>(defaultHotkey())
+  const inputType = draft.mouseInput ? "mouse" : "keyboard"
+  const mouseInputItems = Object.fromEntries(
+    shortcutMouseInputs.map((input) => [input, mouseInputLabel(input)]),
+  )
 
   useEffect(() => {
     if (open) {
@@ -70,23 +95,98 @@ export function ShortcutDialog({
           <div className="p-1">
             <FieldGroup>
             <Field>
-              <FieldLabel htmlFor="shortcut-name">名称</FieldLabel>
-              <Input
-                id="shortcut-name"
-                value={draft.name}
-                onChange={(event) =>
-                  setDraft({ ...draft, name: event.target.value })
-                }
-                placeholder="例如：打开终端"
-              />
+              <FieldLabel>输入类型</FieldLabel>
+              <ToggleGroup
+                variant="outline"
+                spacing={0}
+                value={[inputType]}
+                onValueChange={(values) => {
+                  const value = values[0]
+                  if (!value) return
+                  if (value === "mouse") {
+                    setDraft({
+                      ...draft,
+                      keys: [],
+                      mouseInput: "wheelUp",
+                      modifiers: ["Alt"],
+                    })
+                    return
+                  }
+                  setDraft({
+                    ...draft,
+                    keys: draft.keys?.length ? draft.keys : ["Ctrl", "Alt", "K"],
+                    mouseInput: "",
+                    modifiers: [],
+                  })
+                }}
+              >
+                {Object.entries(shortcutInputTypes).map(([value, label]) => (
+                  <ToggleGroupItem key={value} value={value}>
+                    {label}
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
             </Field>
-            <Field>
-              <FieldLabel>快捷键</FieldLabel>
-              <KeyRecorder
-                value={draft.keys}
-                onChange={(keys) => setDraft({ ...draft, keys })}
-              />
-            </Field>
+            {inputType === "keyboard" ? (
+              <Field>
+                <FieldLabel>快捷键</FieldLabel>
+                <KeyRecorder
+                  value={draft.keys}
+                  onChange={(keys) => setDraft({ ...draft, keys })}
+                />
+              </Field>
+            ) : (
+              <>
+                <Field>
+                  <FieldLabel>修饰键</FieldLabel>
+                  <ToggleGroup
+                    multiple
+                    variant="outline"
+                    className="w-full"
+                    value={normalizeMouseModifiers(draft.modifiers)}
+                    onValueChange={(modifiers) =>
+                      setDraft({
+                        ...draft,
+                        modifiers: normalizeMouseModifiers(modifiers),
+                      })
+                    }
+                  >
+                    {shortcutMouseModifiers.map((modifier) => (
+                      <ToggleGroupItem
+                        key={modifier}
+                        value={modifier}
+                        className="flex-1"
+                      >
+                        {modifier}
+                      </ToggleGroupItem>
+                    ))}
+                  </ToggleGroup>
+                </Field>
+                <Field>
+                  <FieldLabel>鼠标输入</FieldLabel>
+                  <Select
+                    items={mouseInputItems}
+                    value={draft.mouseInput ?? "wheelUp"}
+                    onValueChange={(mouseInput) =>
+                      mouseInput && setDraft({ ...draft, mouseInput })
+                    }
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent alignItemWithTrigger={false}>
+                      <SelectGroup>
+                        {Object.entries(mouseInputItems).map(([value, label]) => (
+                          <SelectItem key={value} value={value}>
+                            {label}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </Field>
+              </>
+            )}
               <ActionEditor
                 action={draft.action}
                 presets={presets}
@@ -101,7 +201,11 @@ export function ShortcutDialog({
           </Button>
           <Button
             type="button"
-            disabled={!draft.name.trim() || !(draft.keys?.length)}
+            disabled={
+              inputType === "keyboard"
+                ? !(draft.keys?.length)
+                : !draft.mouseInput || !normalizeMouseModifiers(draft.modifiers).length
+            }
             onClick={() => {
               onSave(draft)
               onClose()
@@ -186,16 +290,15 @@ export function LayerDialog({
           </Field>
           <Field>
             <FieldLabel htmlFor="layer-hold">进入 Layer 的长按时间</FieldLabel>
-            <Input
+            <NumberInput
               id="layer-hold"
-              type="number"
               min={50}
               max={1500}
               value={draft.holdMs}
-              onChange={(event) =>
+              onValueChange={(holdMs) =>
                 setDraft({
                   ...draft,
-                  holdMs: Number(event.target.value) || defaultHoldMs,
+                  holdMs,
                 })
               }
             />

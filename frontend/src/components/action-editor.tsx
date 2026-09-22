@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/card"
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { NumberInput } from "@/components/ui/number-input"
 import {
   Select,
   SelectContent,
@@ -517,19 +518,15 @@ export function ActionEditor({
               <FieldLabel htmlFor={fieldID + "-window-border-size"}>
                 边框尺寸
               </FieldLabel>
-              <Input
+              <NumberInput
                 id={fieldID + "-window-border-size"}
-                type="number"
                 min={1}
                 max={12}
                 value={action.windowBorderSize ?? 2}
-                onChange={(event) =>
+                onValueChange={(windowBorderSize) =>
                   onChange({
                     ...action,
-                    windowBorderSize: Math.max(
-                      1,
-                      Math.min(12, Number(event.target.value) || 2),
-                    ),
+                    windowBorderSize,
                   })
                 }
               />
@@ -541,16 +538,15 @@ export function ActionEditor({
         action.type === ActionType.ActionVolume && (
         <Field>
           <FieldLabel htmlFor={fieldID + "-volume"}>变化步数</FieldLabel>
-          <Input
+          <NumberInput
             id={fieldID + "-volume"}
-            type="number"
             min={-20}
             max={20}
             value={action.delta ?? 1}
-            onChange={(event) =>
+            onValueChange={(delta) =>
               onChange({
                 ...action,
-                delta: Math.max(-20, Math.min(20, Number(event.target.value) || 0)),
+                delta,
               })
             }
           />
@@ -562,16 +558,15 @@ export function ActionEditor({
         action.type === ActionType.ActionBrightness && (
         <Field>
           <FieldLabel htmlFor={fieldID + "-brightness"}>亮度变化</FieldLabel>
-          <Input
+          <NumberInput
             id={fieldID + "-brightness"}
-            type="number"
             min={-100}
             max={100}
             value={action.delta ?? 5}
-            onChange={(event) =>
+            onValueChange={(delta) =>
               onChange({
                 ...action,
-                delta: Math.max(-100, Math.min(100, Number(event.target.value) || 0)),
+                delta,
               })
             }
           />
@@ -654,16 +649,15 @@ export function ActionEditor({
       {depth > 0 && (
         <Field>
           <FieldLabel htmlFor={fieldID + "-delay"}>执行前延迟</FieldLabel>
-          <Input
+          <NumberInput
             id={fieldID + "-delay"}
-            type="number"
             min={0}
             max={60000}
             value={action.delayMs ?? 0}
-            onChange={(event) =>
+            onValueChange={(delayMs) =>
               onChange({
                 ...action,
-                delayMs: Math.max(0, Math.min(60000, Number(event.target.value) || 0)),
+                delayMs,
               })
             }
           />

@@ -33,6 +33,7 @@ import {
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
 import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { NumberInput } from "@/components/ui/number-input"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import {
@@ -220,17 +221,12 @@ export function EdgeWheelPanel({
           </DialogHeader>
           <Field>
             <FieldLabel htmlFor="edge-wheel-margin">触发范围</FieldLabel>
-            <Input
+            <NumberInput
               id="edge-wheel-margin"
-              type="number"
               min={1}
               max={64}
               value={marginDraft}
-              onChange={(event) =>
-                setMarginDraft(
-                  Math.max(1, Math.min(64, Number(event.target.value) || 1)),
-                )
-              }
+              onValueChange={setMarginDraft}
             />
           </Field>
           <DialogFooter>

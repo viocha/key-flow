@@ -37,8 +37,10 @@ type compiledEdgeWheel struct {
 
 type compiledConfig struct {
 	enabled        bool
+	keyInterval    time.Duration
 	gestureTimeout time.Duration
 	hotkeys        map[string]Action
+	mouseHotkeys   map[string]Action
 	layers         map[string]compiledLayer
 	gestures       map[string]compiledGestures
 	edgeWheels     map[string]compiledEdgeWheel
@@ -175,14 +177,19 @@ func (e *InputEngine) snapshot() compiledConfig {
 
 	copy := compiledConfig{
 		enabled:        e.compiled.enabled,
+		keyInterval:    e.compiled.keyInterval,
 		gestureTimeout: e.compiled.gestureTimeout,
 		hotkeys:        make(map[string]Action, len(e.compiled.hotkeys)),
+		mouseHotkeys:   make(map[string]Action, len(e.compiled.mouseHotkeys)),
 		layers:         make(map[string]compiledLayer, len(e.compiled.layers)),
 		gestures:       make(map[string]compiledGestures, len(e.compiled.gestures)),
 		edgeWheels:     make(map[string]compiledEdgeWheel, len(e.compiled.edgeWheels)),
 	}
 	for chord, action := range e.compiled.hotkeys {
 		copy.hotkeys[chord] = action
+	}
+	for shortcut, action := range e.compiled.mouseHotkeys {
+		copy.mouseHotkeys[shortcut] = action
 	}
 	for trigger, layer := range e.compiled.layers {
 		bindings := make(map[string]Action, len(layer.bindings))
@@ -286,7 +293,10 @@ func (e *InputEngine) executeAction(action Action, depth int, context ActionCont
 		}
 		return nil
 	}
-	return executePlatformActionContext(action, context)
+	e.mu.RLock()
+	keyInterval := e.compiled.keyInterval
+	e.mu.RUnlock()
+	return executePlatformActionContext(action, context, keyInterval)
 }
 
 func compileConfig(config AppConfig) (compiledConfig, error) {
@@ -296,8 +306,10 @@ func compileConfig(config AppConfig) (compiledConfig, error) {
 
 	compiled := compiledConfig{
 		enabled:        config.Enabled,
+		keyInterval:    time.Duration(config.Settings.DefaultKeyIntervalMS) * time.Millisecond,
 		gestureTimeout: time.Duration(config.Settings.GestureTimeoutMS) * time.Millisecond,
 		hotkeys:        map[string]Action{},
+		mouseHotkeys:   map[string]Action{},
 		layers:         map[string]compiledLayer{},
 		gestures:       map[string]compiledGestures{},
 		edgeWheels:     map[string]compiledEdgeWheel{},
@@ -316,6 +328,14 @@ func compileConfig(config AppConfig) (compiledConfig, error) {
 	if profile.HotkeysEnabled {
 		for _, rule := range profile.Hotkeys {
 			if !rule.Enabled {
+				continue
+			}
+			if rule.MouseInput != "" {
+				key, err := mouseShortcutKey(rule.Modifiers, rule.MouseInput)
+				if err != nil {
+					return compiledConfig{}, err
+				}
+				compiled.mouseHotkeys[key] = rule.Action
 				continue
 			}
 			chord, err := canonicalChord(rule.Keys)

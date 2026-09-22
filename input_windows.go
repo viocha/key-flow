@@ -753,7 +753,7 @@ func vkFromKeyName(name string) (uint16, bool) {
 	}
 }
 
-func executePlatformActionContext(action Action, context ActionContext) error {
+func executePlatformActionContext(action Action, context ActionContext, keyInterval time.Duration) error {
 	switch action.Type {
 	case ActionKeyStroke:
 		return sendKeyStroke(action.Keys)
@@ -773,7 +773,7 @@ func executePlatformActionContext(action Action, context ActionContext) error {
 		}
 		return nil
 	case ActionEdit:
-		return executeEditAction(action)
+		return executeEditAction(action, keyInterval)
 	case ActionWindow:
 		if context.Window != 0 {
 			return executeWindowActionForWindow(action, windows.Handle(context.Window))

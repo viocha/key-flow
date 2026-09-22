@@ -24,6 +24,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { NumberInput } from "@/components/ui/number-input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Switch } from "@/components/ui/switch"
 import {
@@ -142,19 +143,15 @@ export function GestureGroupDialog({
           <div className="grid grid-cols-2 gap-3">
             <Field>
               <FieldLabel htmlFor="gesture-group-start">启动距离</FieldLabel>
-              <Input
+              <NumberInput
                 id="gesture-group-start"
-                type="number"
                 min={4}
                 max={100}
                 value={draft.startDistancePx}
-                onChange={(event) =>
+                onValueChange={(startDistancePx) =>
                   setDraft({
                     ...draft,
-                    startDistancePx: Math.max(
-                      4,
-                      Math.min(100, Number(event.target.value) || 4),
-                    ),
+                    startDistancePx,
                   })
                 }
               />
@@ -162,19 +159,15 @@ export function GestureGroupDialog({
 
             <Field>
               <FieldLabel htmlFor="gesture-group-segment">分段距离</FieldLabel>
-              <Input
+              <NumberInput
                 id="gesture-group-segment"
-                type="number"
                 min={4}
                 max={200}
                 value={draft.segmentDistancePx}
-                onChange={(event) =>
+                onValueChange={(segmentDistancePx) =>
                   setDraft({
                     ...draft,
-                    segmentDistancePx: Math.max(
-                      4,
-                      Math.min(200, Number(event.target.value) || 4),
-                    ),
+                    segmentDistancePx,
                   })
                 }
               />
@@ -417,19 +410,15 @@ export function EdgeWheelDialog({
             {!noStep && (
               <Field>
                 <FieldLabel htmlFor="edge-step">每格步长</FieldLabel>
-                <Input
+                <NumberInput
                   id="edge-step"
-                  type="number"
                   min={1}
                   max={maxStep}
                   value={draft.step}
-                  onChange={(event) =>
+                  onValueChange={(step) =>
                     setDraft({
                       ...draft,
-                      step: Math.max(
-                        1,
-                        Math.min(maxStep, Number(event.target.value) || 1),
-                      ),
+                      step,
                     })
                   }
                 />
