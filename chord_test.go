@@ -33,3 +33,19 @@ func TestCanonicalChordRejectsUnsupportedKey(t *testing.T) {
 		t.Fatal("expected unsupported key to be rejected")
 	}
 }
+
+func TestMouseShortcutKeyOrdersModifiers(t *testing.T) {
+	got, err := mouseShortcutKey([]string{"Alt", "Shift", "controlleft"}, "left")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "Ctrl+Shift+Alt+left" {
+		t.Fatalf("mouseShortcutKey() = %q, want %q", got, "Ctrl+Shift+Alt+left")
+	}
+}
+
+func TestMouseShortcutKeyRejectsNonModifier(t *testing.T) {
+	if _, err := mouseShortcutKey([]string{"Shift", "K"}, "left"); err == nil {
+		t.Fatal("expected non-modifier key to be rejected")
+	}
+}

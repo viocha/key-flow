@@ -147,6 +147,14 @@ func TestCompileConfigSeparatesMouseShortcutsAndWindowOperations(t *testing.T) {
 			},
 		},
 		{
+			Input:     "middle",
+			Modifiers: []string{"Shift"},
+			Action: Action{
+				Type: ActionKeyStroke,
+				Keys: []string{"Ctrl", "W"},
+			},
+		},
+		{
 			Input: "wheelUp",
 			Action: Action{
 				Type: ActionKeyStroke,
@@ -177,11 +185,37 @@ func TestCompileConfigSeparatesMouseShortcutsAndWindowOperations(t *testing.T) {
 	if action := got.mouseShortcuts["middle"]; action.Type != ActionWindow || action.WindowCommand != "toggleMaximize" {
 		t.Fatalf("middle shortcut = %#v", action)
 	}
+	if action := got.mouseShortcuts["Shift+middle"]; action.Type != ActionKeyStroke {
+		t.Fatalf("shift+middle shortcut = %#v", action)
+	}
 	if action := got.mouseShortcuts["wheelUp"]; action.Type != ActionKeyStroke {
 		t.Fatalf("wheel-up shortcut = %#v", action)
 	}
 	if got.windowOperations.MoveButton != "left" || got.windowOperations.ResizeButton != "right" {
 		t.Fatalf("window operations = %#v", got.windowOperations)
+	}
+}
+
+func TestValidateConfigRejectsDuplicateMouseShortcutCombination(t *testing.T) {
+	config := defaultConfig()
+	layer := testLayer("caps", "CapsLock", "CapsLock", true)
+	layer.MouseShortcuts = []MouseShortcutBinding{
+		{
+			Input:     "left",
+			Modifiers: []string{"Alt", "Shift"},
+			Action:    Action{Type: ActionKeyStroke, Keys: []string{"Ctrl", "Tab"}},
+		},
+		{
+			Input:     "left",
+			Modifiers: []string{"Shift", "Alt"},
+			Action:    Action{Type: ActionKeyStroke, Keys: []string{"Ctrl", "W"}},
+		},
+	}
+	config.Profiles[0].Layers = []TriggerLayer{layer}
+
+	err := validateConfig(config)
+	if err == nil || !strings.Contains(err.Error(), "鼠标快捷键重复") {
+		t.Fatalf("expected duplicate mouse shortcut error, got %v", err)
 	}
 }
 

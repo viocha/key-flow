@@ -341,7 +341,11 @@ func compileConfig(config AppConfig) (compiledConfig, error) {
 
 		mouseShortcuts := make(map[string]Action, len(layer.MouseShortcuts))
 		for _, binding := range layer.MouseShortcuts {
-			mouseShortcuts[binding.Input] = binding.Action
+			key, err := mouseShortcutKey(binding.Modifiers, binding.Input)
+			if err != nil {
+				return compiledConfig{}, err
+			}
+			mouseShortcuts[key] = binding.Action
 		}
 
 		compiled.layers[layer.Trigger] = compiledLayer{

@@ -49,8 +49,9 @@ type LayerBinding struct {
 }
 
 type MouseShortcutBinding struct {
-	Input  string `json:"input"`
-	Action Action `json:"action"`
+	Input     string   `json:"input"`
+	Modifiers []string `json:"modifiers,omitempty"`
+	Action    Action   `json:"action"`
 }
 
 type WindowPointerOperations struct {

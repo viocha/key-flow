@@ -51,6 +51,40 @@ func canonicalChord(keys []string) (string, error) {
 	return strings.Join(append(modifiers, mainKeys[0]), "+"), nil
 }
 
+func canonicalModifiers(keys []string) ([]string, error) {
+	seen := map[string]struct{}{}
+	modifiers := make([]string, 0, 4)
+	for _, raw := range keys {
+		key := normalizeKeyName(raw)
+		if key == "" {
+			continue
+		}
+		if _, ok := modifierOrder[key]; !ok {
+			return nil, fmt.Errorf("不支持的修饰键: %s", raw)
+		}
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		modifiers = append(modifiers, key)
+	}
+	sort.Slice(modifiers, func(i, j int) bool {
+		return modifierOrder[modifiers[i]] < modifierOrder[modifiers[j]]
+	})
+	return modifiers, nil
+}
+
+func mouseShortcutKey(modifiers []string, input string) (string, error) {
+	canonical, err := canonicalModifiers(modifiers)
+	if err != nil {
+		return "", err
+	}
+	parts := make([]string, 0, len(canonical)+1)
+	parts = append(parts, canonical...)
+	parts = append(parts, input)
+	return strings.Join(parts, "+"), nil
+}
+
 func normalizeKeyName(value string) string {
 	value = strings.TrimSpace(value)
 	lower := strings.ToLower(value)

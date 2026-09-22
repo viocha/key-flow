@@ -42,11 +42,15 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import {
   actionSummary,
   defaultMouseShortcutAction,
   mouseInputForTrigger,
   mouseInputLabel,
+  mouseShortcutKey,
+  mouseShortcutLabel,
+  normalizeMouseModifiers,
   type UiLayer,
 } from "@/lib/app-model"
 import { showUndoDeleteToast } from "@/lib/undo-toast"
@@ -70,6 +74,7 @@ const mouseButtonInputs = [
 ] as const
 
 type MouseInput = (typeof mouseInputs)[number]
+const mouseModifiers = ["Ctrl", "Shift", "Alt", "Win"] as const
 
 export function MouseBindingsPanel({
   layer,
@@ -85,7 +90,7 @@ export function MouseBindingsPanel({
     | {
         open: true
         binding?: MouseShortcutBinding
-        originalInput?: string
+        originalKey?: string
       }
   >({ open: false })
   const layerRef = useRef(layer)
@@ -96,13 +101,9 @@ export function MouseBindingsPanel({
     layer.mouseShortcuts.map((binding) => binding.input),
   )
 
-  const availableShortcutInputs = (
-    currentInput?: string,
-  ): MouseInput[] =>
+  const availableShortcutInputs = (): MouseInput[] =>
     mouseInputs.filter((input) => {
-      if (input === currentInput) return true
       if (input === triggerInput) return false
-      if (shortcutInputs.has(input)) return false
       if (layer.windowOperations.enabled) {
         if (input === layer.windowOperations.moveButton) return false
         if (input === layer.windowOperations.resizeButton) return false
@@ -118,10 +119,10 @@ export function MouseBindingsPanel({
 
   const saveShortcut = (
     binding: MouseShortcutBinding,
-    originalInput?: string,
+    originalKey?: string,
   ) => {
     const next = layer.mouseShortcuts.filter(
-      (item) => item.input !== (originalInput ?? binding.input),
+      (item) => mouseShortcutKey(item) !== originalKey,
     )
     onChange({
       ...layer,
@@ -129,19 +130,25 @@ export function MouseBindingsPanel({
     })
   }
 
-  const deleteShortcut = (input: string) => {
-    const index = layer.mouseShortcuts.findIndex((binding) => binding.input === input)
+  const deleteShortcut = (key: string) => {
+    const index = layer.mouseShortcuts.findIndex(
+      (binding) => mouseShortcutKey(binding) === key,
+    )
     if (index < 0) return
     const deleted = layer.mouseShortcuts[index]
     onChange({
       ...layer,
       mouseShortcuts: layer.mouseShortcuts.filter(
-        (binding) => binding.input !== input,
+        (binding) => mouseShortcutKey(binding) !== key,
       ),
     })
     showUndoDeleteToast("鼠标快捷键", () => {
       const current = layerRef.current
-      if (current.mouseShortcuts.some((binding) => binding.input === deleted.input)) return
+      if (
+        current.mouseShortcuts.some(
+          (binding) => mouseShortcutKey(binding) === mouseShortcutKey(deleted),
+        )
+      ) return
       const mouseShortcuts = [...current.mouseShortcuts]
       mouseShortcuts.splice(Math.min(index, mouseShortcuts.length), 0, deleted)
       onChange({ ...current, mouseShortcuts })
@@ -214,65 +221,68 @@ export function MouseBindingsPanel({
               </EmptyHeader>
             </Empty>
           ) : (
-            layer.mouseShortcuts.map((binding, index) => (
-              <div key={binding.input}>
-                {index > 0 && <Separator />}
-                <EditableListRow
-                  onEdit={() =>
-                    setDialog({
-                      open: true,
-                      binding,
-                      originalInput: binding.input,
-                    })
-                  }
-                >
-                  <div className="w-28 shrink-0 text-sm font-medium">
-                    {mouseInputLabel(binding.input)}
-                  </div>
-                  <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                    {actionSummary(binding.action)}
-                  </div>
-                  <div onClick={stopListRowClick} onKeyDown={stopListRowClick}>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      className={buttonVariants({
-                        variant: "ghost",
-                        size: "icon-sm",
-                        className:
-                          "data-popup-open:bg-accent data-popup-open:text-accent-foreground",
-                      })}
-                      aria-label="更多操作"
-                    >
-                      <MoreHorizontalIcon />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-32">
-                      <DropdownMenuGroup>
-                        <DropdownMenuItem
-                          onClick={() =>
-                            setDialog({
-                              open: true,
-                              binding,
-                              originalInput: binding.input,
-                            })
-                          }
+            layer.mouseShortcuts.map((binding, index) => {
+              const bindingKey = mouseShortcutKey(binding)
+              return (
+                <div key={bindingKey}>
+                  {index > 0 && <Separator />}
+                  <EditableListRow
+                    onEdit={() =>
+                      setDialog({
+                        open: true,
+                        binding,
+                        originalKey: bindingKey,
+                      })
+                    }
+                  >
+                    <div className="w-40 shrink-0 text-sm font-medium">
+                      {mouseShortcutLabel(binding)}
+                    </div>
+                    <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                      {actionSummary(binding.action)}
+                    </div>
+                    <div onClick={stopListRowClick} onKeyDown={stopListRowClick}>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          className={buttonVariants({
+                            variant: "ghost",
+                            size: "icon-sm",
+                            className:
+                              "data-popup-open:bg-accent data-popup-open:text-accent-foreground",
+                          })}
+                          aria-label="更多操作"
                         >
-                          <PencilIcon />
-                          编辑
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onClick={() => deleteShortcut(binding.input)}
-                        >
-                          <Trash2Icon />
-                          删除
-                        </DropdownMenuItem>
-                      </DropdownMenuGroup>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                  </div>
-                </EditableListRow>
-              </div>
-            ))
+                          <MoreHorizontalIcon />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-32">
+                          <DropdownMenuGroup>
+                            <DropdownMenuItem
+                              onClick={() =>
+                                setDialog({
+                                  open: true,
+                                  binding,
+                                  originalKey: bindingKey,
+                                })
+                              }
+                            >
+                              <PencilIcon />
+                              编辑
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onClick={() => deleteShortcut(bindingKey)}
+                            >
+                              <Trash2Icon />
+                              删除
+                            </DropdownMenuItem>
+                          </DropdownMenuGroup>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </EditableListRow>
+                </div>
+              )
+            })
           )}
         </CardContent>
       </Card>
@@ -424,15 +434,17 @@ export function MouseBindingsPanel({
         binding={dialog.open ? dialog.binding : undefined}
         availableInputs={
           dialog.open
-            ? availableShortcutInputs(dialog.originalInput)
+            ? availableShortcutInputs()
             : []
         }
+        existingKeys={new Set(layer.mouseShortcuts.map(mouseShortcutKey))}
+        originalKey={dialog.open ? dialog.originalKey : undefined}
         presets={presets}
         onClose={() => setDialog({ open: false })}
         onSave={(binding) =>
           saveShortcut(
             binding,
-            dialog.open ? dialog.originalInput : undefined,
+            dialog.open ? dialog.originalKey : undefined,
           )
         }
       />
@@ -444,6 +456,8 @@ function MouseShortcutDialog({
   open,
   binding,
   availableInputs,
+  existingKeys,
+  originalKey,
   presets,
   onClose,
   onSave,
@@ -451,6 +465,8 @@ function MouseShortcutDialog({
   open: boolean
   binding?: MouseShortcutBinding
   availableInputs: MouseInput[]
+  existingKeys: Set<string>
+  originalKey?: string
   presets: ActionPreset[]
   onClose: () => void
   onSave: (binding: MouseShortcutBinding) => void
@@ -464,6 +480,7 @@ function MouseShortcutDialog({
   )
   const [draft, setDraft] = useState<MouseShortcutBinding>({
     input: "left",
+    modifiers: [],
     action: defaultMouseShortcutAction(),
   })
 
@@ -475,9 +492,13 @@ function MouseShortcutDialog({
     }
     setDraft({
       input: availableInputs[0] ?? "left",
+      modifiers: [],
       action: defaultMouseShortcutAction(),
     })
   }, [availableInputs, binding, open])
+
+  const draftKey = mouseShortcutKey(draft)
+  const duplicate = existingKeys.has(draftKey) && draftKey !== originalKey
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
@@ -514,6 +535,32 @@ function MouseShortcutDialog({
               </Select>
             </Field>
 
+            <Field>
+              <FieldLabel>修饰键</FieldLabel>
+              <ToggleGroup
+                multiple
+                variant="outline"
+                className="w-full"
+                value={normalizeMouseModifiers(draft.modifiers)}
+                onValueChange={(modifiers) =>
+                  setDraft({
+                    ...draft,
+                    modifiers: normalizeMouseModifiers(modifiers),
+                  })
+                }
+              >
+                {mouseModifiers.map((modifier) => (
+                  <ToggleGroupItem
+                    key={modifier}
+                    value={modifier}
+                    className="flex-1"
+                  >
+                    {modifier}
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+            </Field>
+
             <ActionEditor
               action={draft.action}
               presets={presets}
@@ -528,7 +575,9 @@ function MouseShortcutDialog({
           </Button>
           <Button
             type="button"
-            disabled={!availableInputs.includes(draft.input as MouseInput)}
+            disabled={
+              !availableInputs.includes(draft.input as MouseInput) || duplicate
+            }
             onClick={() => {
               onSave(draft)
               onClose()

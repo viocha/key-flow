@@ -194,6 +194,24 @@ export function mouseInputLabel(input: string) {
   }
 }
 
+const mouseModifierOrder = ["Ctrl", "Shift", "Alt", "Win"] as const
+
+export function normalizeMouseModifiers(modifiers?: readonly string[] | null) {
+  const selected = new Set(modifiers ?? [])
+  return mouseModifierOrder.filter((modifier) => selected.has(modifier))
+}
+
+export function mouseShortcutKey(binding: MouseShortcutBinding) {
+  return [...normalizeMouseModifiers(binding.modifiers), binding.input].join("+")
+}
+
+export function mouseShortcutLabel(binding: MouseShortcutBinding) {
+  return [
+    ...normalizeMouseModifiers(binding.modifiers),
+    mouseInputLabel(binding.input),
+  ].join(" + ")
+}
+
 export function mouseInputForTrigger(trigger: string) {
   switch (trigger) {
     case "MouseRight":

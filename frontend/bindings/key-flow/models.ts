@@ -122,6 +122,7 @@ export interface LayerBinding {
 
 export interface MouseShortcutBinding {
     "input": string;
+    "modifiers"?: string[] | null;
     "action": Action;
 }
 

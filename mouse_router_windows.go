@@ -154,7 +154,8 @@ func (s *windowsInputState) handleMouse(message uint32, data *msLLHookStruct) bo
 				}
 			}
 
-			if action, ok := trigger.layer.mouseShortcuts[button]; ok {
+			shortcutKey := s.currentMouseShortcutKeyLocked(button)
+			if action, ok := trigger.layer.mouseShortcuts[shortcutKey]; ok {
 				trigger.used = true
 				s.engine.enqueueActionContext(
 					action,
@@ -198,7 +199,8 @@ func (s *windowsInputState) handleMouse(message uint32, data *msLLHookStruct) bo
 			if sign > 0 {
 				input = "wheelUp"
 			}
-			if action, ok := trigger.layer.mouseShortcuts[input]; ok {
+			shortcutKey := s.currentMouseShortcutKeyLocked(input)
+			if action, ok := trigger.layer.mouseShortcuts[shortcutKey]; ok {
 				trigger.used = true
 				s.engine.enqueueActionContext(
 					action,
@@ -261,6 +263,17 @@ func (s *windowsInputState) handleMouse(message uint32, data *msLLHookStruct) bo
 		s.trigger.mouseStart = pt
 	}
 	return true
+}
+
+func (s *windowsInputState) currentMouseShortcutKeyLocked(input string) string {
+	modifiers := make([]string, 0, 4)
+	for _, name := range []string{"Ctrl", "Shift", "Alt", "Win"} {
+		if s.modifierDownLocked(name) {
+			modifiers = append(modifiers, name)
+		}
+	}
+	key, _ := mouseShortcutKey(modifiers, input)
+	return key
 }
 
 func (s *windowsInputState) startWindowOperationLocked(

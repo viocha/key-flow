@@ -354,6 +354,7 @@ func validateConfig(config AppConfig) error {
 func validateMouseBindings(trigger string, shortcuts []MouseShortcutBinding, window WindowPointerOperations) error {
 	triggerInput := mouseInputForTrigger(trigger)
 	used := map[string]string{}
+	usedInputs := map[string]string{}
 
 	for _, binding := range shortcuts {
 		if !isSupportedMouseShortcutInput(binding.Input) {
@@ -362,12 +363,20 @@ func validateMouseBindings(trigger string, shortcuts []MouseShortcutBinding, win
 		if binding.Input == triggerInput {
 			return fmt.Errorf("%s 已作为当前触发键", mouseInputLabel(binding.Input))
 		}
-		if previous, exists := used[binding.Input]; exists {
-			return fmt.Errorf("鼠标输入重复: %s 与 %s", previous, mouseInputLabel(binding.Input))
+		key, err := mouseShortcutKey(binding.Modifiers, binding.Input)
+		if err != nil {
+			return fmt.Errorf("%s修饰键无效: %w", mouseInputLabel(binding.Input), err)
 		}
-		used[binding.Input] = mouseInputLabel(binding.Input)
+		label := mouseShortcutBindingLabel(binding.Modifiers, binding.Input)
+		if previous, exists := used[key]; exists {
+			return fmt.Errorf("鼠标快捷键重复: %s 与 %s", previous, label)
+		}
+		used[key] = label
+		if _, exists := usedInputs[binding.Input]; !exists {
+			usedInputs[binding.Input] = label
+		}
 		if err := validateAction(binding.Action, 0); err != nil {
-			return fmt.Errorf("%s动作无效: %w", mouseInputLabel(binding.Input), err)
+			return fmt.Errorf("%s动作无效: %w", label, err)
 		}
 	}
 
@@ -388,10 +397,10 @@ func validateMouseBindings(trigger string, shortcuts []MouseShortcutBinding, win
 		if input == triggerInput {
 			return fmt.Errorf("%s不能使用当前触发键 %s", name, mouseInputLabel(input))
 		}
-		if previous, exists := used[input]; exists {
+		if previous, exists := usedInputs[input]; exists {
 			return fmt.Errorf("%s与%s冲突", name, previous)
 		}
-		used[input] = name
+		usedInputs[input] = name
 	}
 
 	if window.MoveButton != "" && window.MoveButton == window.ResizeButton {
@@ -401,14 +410,22 @@ func validateMouseBindings(trigger string, shortcuts []MouseShortcutBinding, win
 		if window.ScaleStepPercent < 1 || window.ScaleStepPercent > 50 {
 			return errors.New("窗口中心缩放步长须为 1–50%")
 		}
-		if _, exists := used["wheelUp"]; exists {
+		if _, exists := usedInputs["wheelUp"]; exists {
 			return errors.New("窗口中心缩放与滚轮向上快捷键冲突")
 		}
-		if _, exists := used["wheelDown"]; exists {
+		if _, exists := usedInputs["wheelDown"]; exists {
 			return errors.New("窗口中心缩放与滚轮向下快捷键冲突")
 		}
 	}
 	return nil
+}
+
+func mouseShortcutBindingLabel(modifiers []string, input string) string {
+	canonical, _ := canonicalModifiers(modifiers)
+	parts := make([]string, 0, len(canonical)+1)
+	parts = append(parts, canonical...)
+	parts = append(parts, mouseInputLabel(input))
+	return strings.Join(parts, " + ")
 }
 
 func isSupportedMouseShortcutInput(input string) bool {
