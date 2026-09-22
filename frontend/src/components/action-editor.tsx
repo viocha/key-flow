@@ -31,10 +31,19 @@ const actionTypeItems = {
   text: "输入文本",
   launch: "打开目标",
   command: "运行命令 / 脚本",
+  edit: "编辑操作",
   window: "窗口操作",
   volume: "音量",
   brightness: "亮度",
   sequence: "动作序列",
+}
+
+const editCommandItems = {
+  deleteLine: "删除当前行",
+  insertLineBelow: "下方插入空行",
+  insertLineAbove: "上方插入空行",
+  selectLine: "选中当前行",
+  selectLineWithBreak: "选中当前行（含换行）",
 }
 
 const windowCommandItems = {
@@ -138,6 +147,9 @@ export function ActionEditor({
           args: [],
         })
         break
+      case ActionType.ActionEdit:
+        onChange({ type, editCommand: "deleteLine" })
+        break
       case ActionType.ActionWindow:
         onChange({ type, windowCommand: "close" })
         break
@@ -236,6 +248,7 @@ export function ActionEditor({
                   <SelectItem value={ActionType.ActionCommand}>
                     运行命令 / 脚本
                   </SelectItem>
+                  <SelectItem value={ActionType.ActionEdit}>编辑操作</SelectItem>
                   <SelectItem value={ActionType.ActionWindow}>窗口操作</SelectItem>
                   <SelectItem value={ActionType.ActionVolume}>音量</SelectItem>
                   <SelectItem value={ActionType.ActionBrightness}>亮度</SelectItem>
@@ -413,6 +426,33 @@ export function ActionEditor({
             </FieldDescription>
           </Field>
         </>
+      )}
+
+      {editorMode === "custom" && action.type === ActionType.ActionEdit && (
+        <Field>
+          <FieldLabel>编辑操作</FieldLabel>
+          <Select
+            items={editCommandItems}
+            value={action.editCommand ?? "deleteLine"}
+            onValueChange={(value) => {
+              if (!value) return
+              onChange({ ...action, editCommand: value })
+            }}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent alignItemWithTrigger={false}>
+              <SelectGroup>
+                {Object.entries(editCommandItems).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </Field>
       )}
 
       {editorMode === "custom" &&

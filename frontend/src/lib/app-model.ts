@@ -102,6 +102,8 @@ export function actionSummary(action: Action) {
       return action.program ? "运行 " + action.program : "运行命令"
     case ActionType.ActionSequence:
       return "动作序列 · " + (action.sequence?.length ?? 0) + " 项"
+    case ActionType.ActionEdit:
+      return editCommandLabel(action.editCommand ?? "")
     case ActionType.ActionWindow:
       return windowCommandLabel(action.windowCommand ?? "")
     case ActionType.ActionVolume:
@@ -114,6 +116,23 @@ export function actionSummary(action: Action) {
         : "亮度 " + (action.delta ?? 0) + "%"
     default:
       return "未配置动作"
+  }
+}
+
+export function editCommandLabel(command: string) {
+  switch (command) {
+    case "deleteLine":
+      return "删除当前行"
+    case "insertLineBelow":
+      return "下方插入空行"
+    case "insertLineAbove":
+      return "上方插入空行"
+    case "selectLine":
+      return "选中当前行"
+    case "selectLineWithBreak":
+      return "选中当前行（含换行）"
+    default:
+      return "编辑操作"
   }
 }
 

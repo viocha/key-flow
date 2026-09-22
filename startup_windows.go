@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	startupTaskName                  = "Key Flow Startup"
+	startupTaskName                  = "key-flow"
 	taskCreateOrUpdate               = 6
 	taskLogonNone                    = 0
 	taskSchedulerFileNotFoundHResult = 0x80070002

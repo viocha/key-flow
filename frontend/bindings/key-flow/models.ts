@@ -14,6 +14,7 @@ export interface Action {
     "workingDirectory"?: string;
     "sequence"?: Action[] | null;
     "delayMs"?: number;
+    "editCommand"?: string;
     "windowCommand"?: string;
     "windowBorderColor"?: string;
     "windowBorderSize"?: number;
@@ -39,6 +40,7 @@ export enum ActionType {
     ActionLaunch = "launch",
     ActionCommand = "command",
     ActionSequence = "sequence",
+    ActionEdit = "edit",
     ActionWindow = "window",
     ActionVolume = "volume",
     ActionBrightness = "brightness",

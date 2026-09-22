@@ -8,6 +8,7 @@ const (
 	ActionLaunch     ActionType = "launch"
 	ActionCommand    ActionType = "command"
 	ActionSequence   ActionType = "sequence"
+	ActionEdit       ActionType = "edit"
 	ActionWindow     ActionType = "window"
 	ActionVolume     ActionType = "volume"
 	ActionBrightness ActionType = "brightness"
@@ -26,6 +27,7 @@ type Action struct {
 	WorkingDirectory  string     `json:"workingDirectory,omitempty"`
 	Sequence          []Action   `json:"sequence,omitempty"`
 	DelayMS           int        `json:"delayMs,omitempty"`
+	EditCommand       string     `json:"editCommand,omitempty"`
 	WindowCommand     string     `json:"windowCommand,omitempty"`
 	WindowBorderColor string     `json:"windowBorderColor,omitempty"`
 	WindowBorderSize  int        `json:"windowBorderSize,omitempty"`

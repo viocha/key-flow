@@ -772,6 +772,8 @@ func executePlatformActionContext(action Action, context ActionContext) error {
 			return fmt.Errorf("启动命令失败: %w", err)
 		}
 		return nil
+	case ActionEdit:
+		return executeEditAction(action)
 	case ActionWindow:
 		if context.Window != 0 {
 			return executeWindowActionForWindow(action, windows.Handle(context.Window))

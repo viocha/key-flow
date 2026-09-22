@@ -529,6 +529,12 @@ func validateAction(action Action, depth int) error {
 				return err
 			}
 		}
+	case ActionEdit:
+		switch action.EditCommand {
+		case "deleteLine", "insertLineBelow", "insertLineAbove", "selectLine", "selectLineWithBreak":
+		default:
+			return fmt.Errorf("未知编辑命令: %s", action.EditCommand)
+		}
 	case ActionWindow:
 		switch action.WindowCommand {
 		case "close", "terminateProcess", "minimize", "maximize", "restore", "toggleMaximize", "previousWindow", "nextWindow", "restoreMinimized":
