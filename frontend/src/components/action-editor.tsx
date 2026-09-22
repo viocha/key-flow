@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from "react"
+import { useEffect, useId, useMemo, useRef, useState } from "react"
 import { ActionType, type Action, type ActionPreset } from "../../bindings/key-flow"
 import { PlusIcon, Trash2Icon } from "lucide-react"
 
@@ -24,6 +24,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { cloneAction, defaultAction } from "@/lib/app-model"
+import { showUndoDeleteToast } from "@/lib/undo-toast"
 
 const actionTypeItems = {
   keyStroke: "模拟快捷键",
@@ -39,7 +40,10 @@ const actionTypeItems = {
 const windowCommandItems = {
   close: "关闭窗口",
   terminateProcess: "终止进程",
+  previousWindow: "切换上一个窗口",
+  nextWindow: "切换下一个窗口",
   minimize: "最小化窗口",
+  restoreMinimized: "恢复最小化窗口",
   maximize: "最大化窗口",
   restore: "恢复窗口",
   toggleMaximize: "切换最大化",
@@ -63,6 +67,8 @@ export function ActionEditor({
   depth?: number
 }) {
   const fieldID = useId()
+  const actionRef = useRef(action)
+  actionRef.current = action
   const groups = useMemo(
     () =>
       presets.reduce<Record<string, ActionPreset[]>>((result, preset) => {
@@ -548,14 +554,21 @@ export function ActionEditor({
                       variant="ghost"
                       size="icon-sm"
                       aria-label={"删除动作 " + (index + 1)}
-                      onClick={() =>
+                      onClick={() => {
+                        const sequence = action.sequence ?? []
+                        const deleted = sequence[index]
+                        if (!deleted) return
                         onChange({
                           ...action,
-                          sequence: (action.sequence ?? []).filter(
-                            (_, childIndex) => childIndex !== index,
-                          ),
+                          sequence: sequence.filter((_, childIndex) => childIndex !== index),
                         })
-                      }
+                        showUndoDeleteToast("动作", () => {
+                          const current = actionRef.current
+                          const restored = [...(current.sequence ?? [])]
+                          restored.splice(Math.min(index, restored.length), 0, deleted)
+                          onChange({ ...current, sequence: restored })
+                        })
+                      }}
                     >
                       <Trash2Icon />
                     </Button>

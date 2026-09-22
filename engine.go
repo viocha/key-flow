@@ -366,7 +366,7 @@ func compileConfig(config AppConfig) (compiledConfig, error) {
 			if err != nil {
 				return compiledConfig{}, err
 			}
-			gestureBindings[key] = compiledGesture{name: gesture.Name, action: gesture.Action}
+			gestureBindings[key] = compiledGesture{name: gestureBindingLabel(gesture), action: gesture.Action}
 		}
 		compiled.gestures[group.Trigger] = compiledGestures{
 			enabled:           true,
@@ -384,7 +384,7 @@ func compileConfig(config AppConfig) (compiledConfig, error) {
 			}
 			if rule.Adjustment == EdgeAdjustmentRecentApps {
 				compiled.edgeWheels[rule.Zone] = compiledEdgeWheel{
-					marginPX:   rule.MarginPX,
+					marginPX:   profile.EdgeWheelMarginPX,
 					recentApps: true,
 					up: Action{
 						Type: ActionKeyStroke,
@@ -400,7 +400,7 @@ func compileConfig(config AppConfig) (compiledConfig, error) {
 
 			if rule.Adjustment == EdgeAdjustmentBidirectionalKeys {
 				compiled.edgeWheels[rule.Zone] = compiledEdgeWheel{
-					marginPX: rule.MarginPX,
+					marginPX: profile.EdgeWheelMarginPX,
 					up: Action{
 						Type: ActionKeyStroke,
 						Keys: append([]string(nil), rule.UpKeys...),
@@ -418,7 +418,7 @@ func compileConfig(config AppConfig) (compiledConfig, error) {
 				actionType = ActionBrightness
 			}
 			compiled.edgeWheels[rule.Zone] = compiledEdgeWheel{
-				marginPX: rule.MarginPX,
+				marginPX: profile.EdgeWheelMarginPX,
 				up:       Action{Type: actionType, Delta: rule.Step},
 				down:     Action{Type: actionType, Delta: -rule.Step},
 			}

@@ -117,14 +117,30 @@ export function actionSummary(action: Action) {
   }
 }
 
+export function gestureBindingLabel(binding: GestureBinding) {
+  const customName = binding.name?.trim()
+  if (customName) return customName
+  if (binding.action.type === ActionType.ActionWindow) {
+    return windowCommandLabel(binding.action.windowCommand ?? "")
+  }
+  const actionName = binding.action.name?.trim()
+  return actionName || actionSummary(binding.action)
+}
+
 export function windowCommandLabel(command: string) {
   switch (command) {
     case "close":
       return "关闭窗口"
     case "terminateProcess":
       return "终止进程"
+    case "previousWindow":
+      return "切换上一个窗口"
+    case "nextWindow":
+      return "切换下一个窗口"
     case "minimize":
       return "最小化窗口"
+    case "restoreMinimized":
+      return "恢复最小化窗口"
     case "maximize":
       return "最大化窗口"
     case "restore":
@@ -306,7 +322,7 @@ export function defaultBinding(): LayerBinding {
 export function defaultGesture(): GestureBinding {
   return {
     id: newID("gesture"),
-    name: "最小化窗口",
+    name: "",
     enabled: true,
     directions: [],
     preview: [],
@@ -331,7 +347,6 @@ export function defaultEdgeWheel(): EdgeWheelRule {
     id: newID("edge"),
     enabled: true,
     zone: "bottomRight",
-    marginPx: 4,
     adjustment: EdgeAdjustmentType.EdgeAdjustmentVolume,
     step: 1,
     upKeys: [],

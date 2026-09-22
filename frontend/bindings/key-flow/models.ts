@@ -67,7 +67,6 @@ export interface EdgeWheelRule {
     "id": string;
     "enabled": boolean;
     "zone": string;
-    "marginPx": number;
     "adjustment": EdgeAdjustmentType;
     "step": number;
     "upKeys"?: string[] | null;
@@ -83,7 +82,7 @@ export interface EngineStatus {
 
 export interface GestureBinding {
     "id": string;
-    "name": string;
+    "name"?: string;
     "enabled": boolean;
     "directions": string[] | null;
     "preview": GesturePoint[] | null;
@@ -132,6 +131,7 @@ export interface Profile {
     "layers": TriggerLayer[] | null;
     "gestures": GestureGroup[] | null;
     "edgeWheelsEnabled": boolean;
+    "edgeWheelMarginPx": number;
     "edgeWheels": EdgeWheelRule[] | null;
 }
 

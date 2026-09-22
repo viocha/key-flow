@@ -60,9 +60,10 @@ func TestCompileConfigUsesActiveProfileOnly(t *testing.T) {
 		testHotkey("active-rule", "当前规则", true, "Ctrl", "Alt", "T"),
 	}
 	config.Profiles = append(config.Profiles, Profile{
-		ID:      "other",
-		Name:    "其他",
-		Hotkeys: []HotkeyRule{testHotkey("other-rule", "其他规则", true, "Ctrl", "K")},
+		ID:                "other",
+		Name:              "其他",
+		Hotkeys:           []HotkeyRule{testHotkey("other-rule", "其他规则", true, "Ctrl", "K")},
+		EdgeWheelMarginPX: 4,
 	})
 
 	compiled, err := compileConfig(config)
@@ -181,6 +182,14 @@ func TestCompileConfigSeparatesMouseShortcutsAndWindowOperations(t *testing.T) {
 	}
 	if got.windowOperations.MoveButton != "left" || got.windowOperations.ResizeButton != "right" {
 		t.Fatalf("window operations = %#v", got.windowOperations)
+	}
+}
+
+func TestValidateActionAcceptsWindowNavigationCommands(t *testing.T) {
+	for _, command := range []string{"previousWindow", "nextWindow", "restoreMinimized"} {
+		if err := validateAction(Action{Type: ActionWindow, WindowCommand: command}, 0); err != nil {
+			t.Fatalf("window command %q should be valid: %v", command, err)
+		}
 	}
 }
 

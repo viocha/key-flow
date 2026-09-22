@@ -233,22 +233,23 @@ export function GestureDialog({
           <div className="p-1">
             <FieldGroup>
               <Field>
-                <FieldLabel htmlFor="gesture-name">名称</FieldLabel>
-                <Input
-                  id="gesture-name"
-                  value={draft.name}
-                  onChange={(event) =>
-                    setDraft({ ...draft, name: event.target.value })
-                  }
-                />
-              </Field>
-              <Field>
                 <FieldLabel>路径</FieldLabel>
                 <GestureRecorder
                   preview={draft.preview}
                   directions={draft.directions}
                   onChange={(preview, directions) =>
                     setDraft({ ...draft, preview, directions })
+                  }
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="gesture-name">名称</FieldLabel>
+                <Input
+                  id="gesture-name"
+                  value={draft.name}
+                  placeholder="可选，用于覆盖默认动作名称"
+                  onChange={(event) =>
+                    setDraft({ ...draft, name: event.target.value })
                   }
                 />
               </Field>
@@ -267,7 +268,6 @@ export function GestureDialog({
           <Button
             type="button"
             disabled={
-              !draft.name.trim() ||
               !(draft.directions?.length) ||
               !draft.preview ||
               draft.preview.length < 2
@@ -320,51 +320,29 @@ export function EdgeWheelDialog({
         </DialogHeader>
 
         <FieldGroup>
-          <div className="grid grid-cols-[minmax(0,1fr)_8rem] gap-3">
-            <Field>
-              <FieldLabel>方位</FieldLabel>
-              <Select
-                items={edgeZoneItems}
-                value={draft.zone}
-                onValueChange={(value) =>
-                  value && setDraft({ ...draft, zone: value })
-                }
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent alignItemWithTrigger={false}>
-                  <SelectGroup>
-                    {Object.entries(edgeZoneItems).map(([value, label]) => (
-                      <SelectItem key={value} value={value}>
-                        {label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </Field>
-
-            <Field>
-              <FieldLabel htmlFor="edge-margin">边缘范围</FieldLabel>
-              <Input
-                id="edge-margin"
-                type="number"
-                min={1}
-                max={64}
-                value={draft.marginPx}
-                onChange={(event) =>
-                  setDraft({
-                    ...draft,
-                    marginPx: Math.max(
-                      1,
-                      Math.min(64, Number(event.target.value) || 1),
-                    ),
-                  })
-                }
-              />
-            </Field>
-          </div>
+          <Field>
+            <FieldLabel>方位</FieldLabel>
+            <Select
+              items={edgeZoneItems}
+              value={draft.zone}
+              onValueChange={(value) =>
+                value && setDraft({ ...draft, zone: value })
+              }
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent alignItemWithTrigger={false}>
+                <SelectGroup>
+                  {Object.entries(edgeZoneItems).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Field>
 
           <div
             className={cn(

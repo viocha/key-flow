@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import type {
   ActionPreset,
   MouseShortcutBinding,
@@ -11,6 +11,7 @@ import {
 } from "lucide-react"
 
 import { ActionEditor } from "@/components/action-editor"
+import { EditableListRow, stopListRowClick } from "@/components/editable-list-row"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import {
@@ -48,6 +49,7 @@ import {
   mouseInputLabel,
   type UiLayer,
 } from "@/lib/app-model"
+import { showUndoDeleteToast } from "@/lib/undo-toast"
 
 const mouseInputs = [
   "left",
@@ -86,6 +88,8 @@ export function MouseBindingsPanel({
         originalInput?: string
       }
   >({ open: false })
+  const layerRef = useRef(layer)
+  layerRef.current = layer
 
   const triggerInput = mouseInputForTrigger(layer.trigger)
   const shortcutInputs = new Set(
@@ -126,11 +130,21 @@ export function MouseBindingsPanel({
   }
 
   const deleteShortcut = (input: string) => {
+    const index = layer.mouseShortcuts.findIndex((binding) => binding.input === input)
+    if (index < 0) return
+    const deleted = layer.mouseShortcuts[index]
     onChange({
       ...layer,
       mouseShortcuts: layer.mouseShortcuts.filter(
         (binding) => binding.input !== input,
       ),
+    })
+    showUndoDeleteToast("鼠标快捷键", () => {
+      const current = layerRef.current
+      if (current.mouseShortcuts.some((binding) => binding.input === deleted.input)) return
+      const mouseShortcuts = [...current.mouseShortcuts]
+      mouseShortcuts.splice(Math.min(index, mouseShortcuts.length), 0, deleted)
+      onChange({ ...current, mouseShortcuts })
     })
   }
 
@@ -203,13 +217,22 @@ export function MouseBindingsPanel({
             layer.mouseShortcuts.map((binding, index) => (
               <div key={binding.input}>
                 {index > 0 && <Separator />}
-                <div className="flex min-w-0 items-center gap-3 px-3 py-2">
+                <EditableListRow
+                  onEdit={() =>
+                    setDialog({
+                      open: true,
+                      binding,
+                      originalInput: binding.input,
+                    })
+                  }
+                >
                   <div className="w-28 shrink-0 text-sm font-medium">
                     {mouseInputLabel(binding.input)}
                   </div>
                   <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
                     {actionSummary(binding.action)}
                   </div>
+                  <div onClick={stopListRowClick} onKeyDown={stopListRowClick}>
                   <DropdownMenu>
                     <DropdownMenuTrigger
                       className={buttonVariants({
@@ -246,7 +269,8 @@ export function MouseBindingsPanel({
                       </DropdownMenuGroup>
                     </DropdownMenuContent>
                   </DropdownMenu>
-                </div>
+                  </div>
+                </EditableListRow>
               </div>
             ))
           )}

@@ -17,6 +17,8 @@ import {
 } from "lucide-react"
 
 import { EdgeWheelPanel } from "@/components/edge-wheel-panel"
+import { EditableListRow, stopListRowClick } from "@/components/editable-list-row"
+import { PanelLayout } from "@/components/panel-layout"
 import { GestureGroupDialog } from "@/components/feature-dialogs"
 import { GestureGroupPanel } from "@/components/gesture-group-panel"
 import { KeyChord } from "@/components/key-chord"
@@ -54,7 +56,6 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import {
   Sidebar,
@@ -73,7 +74,6 @@ import {
   SidebarProvider,
 } from "@/components/ui/sidebar"
 import { Switch } from "@/components/ui/switch"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "@/components/ui/toast"
 import {
   actionSummary,
@@ -87,6 +87,7 @@ import {
   type UiLayer,
   type UiProfile,
 } from "@/lib/app-model"
+import { showUndoDeleteToast } from "@/lib/undo-toast"
 
 type ShortcutDialogState =
   | { open: false }
@@ -115,6 +116,12 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error)
 }
 
+function insertAt<T>(items: T[], index: number, item: T) {
+  const next = [...items]
+  next.splice(Math.min(index, next.length), 0, item)
+  return next
+}
+
 function App() {
   const [config, setConfig] = useState<UiConfig | null>(null)
   const [presets, setPresets] = useState<ActionPreset[]>([])
@@ -126,7 +133,6 @@ function App() {
   const [gestureGroupDialog, setGestureGroupDialog] =
     useState<GestureGroupDialogState>({ open: false })
   const [navigation, setNavigation] = useState<NavigationTarget>("general")
-  const [layerTabs, setLayerTabs] = useState<Record<string, "keys" | "pointer">>({})
   const [showInitialLoading, setShowInitialLoading] = useState(false)
   const lastSavedRef = useRef("")
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -290,6 +296,23 @@ function App() {
     })
   }
 
+  const deleteHotkey = (id: string) => {
+    const index = profile.hotkeys.findIndex((item) => item.id === id)
+    if (index < 0) return
+    const deleted = profile.hotkeys[index]
+    updateProfile((current) => ({
+      ...current,
+      hotkeys: current.hotkeys.filter((item) => item.id !== id),
+    }))
+    showUndoDeleteToast("快捷键", () =>
+      updateProfile((current) =>
+        current.hotkeys.some((item) => item.id === deleted.id)
+          ? current
+          : { ...current, hotkeys: insertAt(current.hotkeys, index, deleted) },
+      ),
+    )
+  }
+
   const saveLayer = (layer: UiLayer) => {
     updateProfile((current) => {
       const exists = current.layers.some((item) => item.id === layer.id)
@@ -339,6 +362,9 @@ function App() {
   }
 
   const deleteLayer = (id: string) => {
+    const index = profile.layers.findIndex((item) => item.id === id)
+    if (index < 0) return
+    const deleted = profile.layers[index]
     updateProfile((current) => ({
       ...current,
       layers: current.layers.filter((item) => item.id !== id),
@@ -346,6 +372,13 @@ function App() {
     if (navigation === `layer:${id}`) {
       setNavigation("general")
     }
+    showUndoDeleteToast("触发键", () =>
+      updateProfile((current) =>
+        current.layers.some((item) => item.id === deleted.id)
+          ? current
+          : { ...current, layers: insertAt(current.layers, index, deleted) },
+      ),
+    )
   }
 
   const availableGestureTriggers = [
@@ -388,6 +421,9 @@ function App() {
   }
 
   const deleteGestureGroup = (id: string) => {
+    const index = profile.gestures.findIndex((item) => item.id === id)
+    if (index < 0) return
+    const deleted = profile.gestures[index]
     updateProfile((current) => ({
       ...current,
       gestures: current.gestures.filter((item) => item.id !== id),
@@ -395,6 +431,39 @@ function App() {
     if (navigation === `gesture:${id}`) {
       setNavigation("general")
     }
+    showUndoDeleteToast("手势分组", () =>
+      updateProfile((current) =>
+        current.gestures.some((item) => item.id === deleted.id)
+          ? current
+          : { ...current, gestures: insertAt(current.gestures, index, deleted) },
+      ),
+    )
+  }
+
+  const deleteLayerBinding = (layerId: string, bindingId: string) => {
+    const layer = profile.layers.find((item) => item.id === layerId)
+    if (!layer) return
+    const index = layer.bindings.findIndex((item) => item.id === bindingId)
+    if (index < 0) return
+    const deleted = layer.bindings[index]
+    updateProfile((current) => ({
+      ...current,
+      layers: current.layers.map((item) =>
+        item.id === layerId
+          ? { ...item, bindings: item.bindings.filter((binding) => binding.id !== bindingId) }
+          : item,
+      ),
+    }))
+    showUndoDeleteToast("按键映射", () =>
+      updateProfile((current) => ({
+        ...current,
+        layers: current.layers.map((item) =>
+          item.id !== layerId || item.bindings.some((binding) => binding.id === deleted.id)
+            ? item
+            : { ...item, bindings: insertAt(item.bindings, index, deleted) },
+        ),
+      })),
+    )
   }
 
   return (
@@ -542,8 +611,7 @@ function App() {
       </Sidebar>
 
       <SidebarInset className="h-svh min-h-0 overflow-hidden bg-muted/20">
-        <ScrollArea className="min-h-0 flex-1">
-          <div className="mx-auto w-full max-w-5xl p-6">
+        <div className="min-h-0 flex-1">
             {navigation === "general" && (
               <HotkeysPanel
                 profile={profile}
@@ -563,12 +631,7 @@ function App() {
                     ),
                   }))
                 }
-                onDelete={(id) =>
-                  updateProfile((current) => ({
-                    ...current,
-                    hotkeys: current.hotkeys.filter((item) => item.id !== id),
-                  }))
-                }
+                onDelete={deleteHotkey}
               />
             )}
 
@@ -576,13 +639,6 @@ function App() {
               <LayerPanel
                 layer={selectedLayer}
                 presets={presets}
-                tab={layerTabs[selectedLayer.id] ?? "keys"}
-                onTabChange={(tab) =>
-                  setLayerTabs((current) => ({
-                    ...current,
-                    [selectedLayer.id]: tab,
-                  }))
-                }
                 onChange={(next) =>
                   updateProfile((current) => ({
                     ...current,
@@ -616,19 +672,7 @@ function App() {
                   })
                 }
                 onDeleteBinding={(bindingId) =>
-                  updateProfile((current) => ({
-                    ...current,
-                    layers: current.layers.map((layer) =>
-                      layer.id === selectedLayer.id
-                        ? {
-                            ...layer,
-                            bindings: layer.bindings.filter(
-                              (item) => item.id !== bindingId,
-                            ),
-                          }
-                        : layer,
-                    ),
-                  }))
+                  deleteLayerBinding(selectedLayer.id, bindingId)
                 }
               />
             )}
@@ -652,11 +696,18 @@ function App() {
             {navigation === "edges" && (
               <EdgeWheelPanel
                 enabled={profile.edgeWheelsEnabled}
+                marginPx={profile.edgeWheelMarginPx}
                 rules={profile.edgeWheels}
                 onEnabledChange={(edgeWheelsEnabled) =>
                   updateProfile((current) => ({
                     ...current,
                     edgeWheelsEnabled,
+                  }))
+                }
+                onMarginChange={(edgeWheelMarginPx) =>
+                  updateProfile((current) => ({
+                    ...current,
+                    edgeWheelMarginPx,
                   }))
                 }
                 onChange={(edgeWheels) =>
@@ -668,20 +719,20 @@ function App() {
               />
             )}
 
-            {navigation === "settings" && (
-              <div className="flex flex-col gap-4">
-                <h1 className="font-heading text-lg font-semibold">设置</h1>
-                <SettingsPanel
-                  config={config}
-                  configPath={configPath}
-                  startupEnabled={startupEnabled}
-                  onStartupChange={updateStartup}
-                  onChange={setConfig}
-                />
-              </div>
-            )}
-          </div>
-        </ScrollArea>
+          {navigation === "settings" && (
+            <PanelLayout
+              header={<h1 className="font-heading text-lg font-semibold">设置</h1>}
+            >
+              <SettingsPanel
+                config={config}
+                configPath={configPath}
+                startupEnabled={startupEnabled}
+                onStartupChange={updateStartup}
+                onChange={setConfig}
+              />
+            </PanelLayout>
+          )}
+        </div>
       </SidebarInset>
 
       <ShortcutDialog
@@ -737,19 +788,22 @@ function HotkeysPanel({
   onDelete: (id: string) => void
 }) {
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <h1 className="font-heading text-lg font-semibold">通用快捷键</h1>
-          <Switch
-            size="sm"
-            checked={profile.hotkeysEnabled}
-            onCheckedChange={onEnabledChange}
-            aria-label="启用通用快捷键"
-          />
+    <PanelLayout
+      header={
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <h1 className="font-heading text-lg font-semibold">通用快捷键</h1>
+            <Switch
+              size="sm"
+              checked={profile.hotkeysEnabled}
+              onCheckedChange={onEnabledChange}
+              aria-label="启用通用快捷键"
+            />
+          </div>
+          <AddButton onClick={onAdd}>添加快捷键</AddButton>
         </div>
-        <AddButton onClick={onAdd}>添加快捷键</AddButton>
-      </div>
+      }
+    >
       <Card className="gap-0 py-0">
         <CardContent className="px-0">
           {profile.hotkeys.length === 0 ? (
@@ -762,7 +816,7 @@ function HotkeysPanel({
             profile.hotkeys.map((rule, index) => (
             <div key={rule.id}>
               {index > 0 && <Separator />}
-              <div className="flex min-w-0 items-center gap-3 px-3 py-2">
+              <EditableListRow onEdit={() => onEdit(rule)}>
                 <div className="w-40 shrink-0">
                   <KeyChord keys={rule.keys} />
                 </div>
@@ -772,31 +826,33 @@ function HotkeysPanel({
                 <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
                   {actionSummary(rule.action)}
                 </div>
-                <Switch
-                  size="sm"
-                  checked={rule.enabled}
-                  onCheckedChange={(enabled) => onToggle(rule.id, enabled)}
-                  aria-label={"启用 " + rule.name}
-                />
-                <RowMenu
-                  onEdit={() => onEdit(rule)}
-                  onDelete={() => onDelete(rule.id)}
-                />
-              </div>
+                <div onClick={stopListRowClick} onKeyDown={stopListRowClick}>
+                  <Switch
+                    size="sm"
+                    checked={rule.enabled}
+                    onCheckedChange={(enabled) => onToggle(rule.id, enabled)}
+                    aria-label={"启用 " + rule.name}
+                  />
+                </div>
+                <div onClick={stopListRowClick} onKeyDown={stopListRowClick}>
+                  <RowMenu
+                    onEdit={() => onEdit(rule)}
+                    onDelete={() => onDelete(rule.id)}
+                  />
+                </div>
+              </EditableListRow>
             </div>
             ))
           )}
         </CardContent>
       </Card>
-    </div>
+    </PanelLayout>
   )
 }
 
 function LayerPanel({
   layer,
   presets,
-  tab,
-  onTabChange,
   onChange,
   onEdit,
   onToggle,
@@ -807,8 +863,6 @@ function LayerPanel({
 }: {
   layer: UiLayer
   presets: ActionPreset[]
-  tab: "keys" | "pointer"
-  onTabChange: (tab: "keys" | "pointer") => void
   onChange: (layer: UiLayer) => void
   onEdit: () => void
   onToggle: (enabled: boolean) => void
@@ -818,46 +872,37 @@ function LayerPanel({
   onDeleteBinding: (bindingId: string) => void
 }) {
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="flex items-center gap-3">
-            <h1 className="truncate font-heading text-lg font-semibold">
-              {triggerLabel(layer.trigger)}
-            </h1>
-            <Switch
-              size="sm"
-              checked={layer.enabled}
-              onCheckedChange={onToggle}
-              aria-label={"启用 " + triggerLabel(layer.trigger)}
-            />
+    <PanelLayout
+      header={
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-3">
+              <h1 className="truncate font-heading text-lg font-semibold">
+                {triggerLabel(layer.trigger)}
+              </h1>
+              <Switch
+                size="sm"
+                checked={layer.enabled}
+                onCheckedChange={onToggle}
+                aria-label={"启用 " + triggerLabel(layer.trigger)}
+              />
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={onEdit}>
+              设置
+            </Button>
+            <RowMenu onDelete={onDelete} />
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={onEdit}>
-            设置
-          </Button>
-          <RowMenu onDelete={onDelete} />
-        </div>
+      }
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-sm font-medium">按键映射</div>
+        <AddButton onClick={onAddBinding}>添加映射</AddButton>
       </div>
 
-      <Tabs
-        value={tab}
-        onValueChange={(value) => onTabChange(value as "keys" | "pointer")}
-        className="gap-4"
-      >
-        <div className="flex items-center justify-between gap-3">
-          <TabsList className="grid w-full max-w-md grid-cols-2">
-            <TabsTrigger value="keys">按键映射</TabsTrigger>
-            <TabsTrigger value="pointer">鼠标</TabsTrigger>
-          </TabsList>
-          {tab === "keys" && (
-            <AddButton onClick={onAddBinding}>添加映射</AddButton>
-          )}
-        </div>
-
-        <TabsContent value="keys">
-          <Card className="gap-0 py-0">
+      <Card className="gap-0 py-0">
             <CardContent className="px-0">
               {layer.bindings.length === 0 ? (
                 <Empty className="min-h-40">
@@ -869,34 +914,32 @@ function LayerPanel({
                 layer.bindings.map((binding, index) => (
                   <div key={binding.id}>
                     {index > 0 && <Separator />}
-                    <div className="flex min-w-0 items-center gap-3 px-3 py-2">
+                    <EditableListRow onEdit={() => onEditBinding(binding)}>
                       <div className="w-36 shrink-0">
                         <KeyChord keys={binding.keys} />
                       </div>
                       <div className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
                         {actionSummary(binding.action)}
                       </div>
-                      <RowMenu
-                        onEdit={() => onEditBinding(binding)}
-                        onDelete={() => onDeleteBinding(binding.id)}
-                      />
-                    </div>
+                      <div onClick={stopListRowClick} onKeyDown={stopListRowClick}>
+                        <RowMenu
+                          onEdit={() => onEditBinding(binding)}
+                          onDelete={() => onDeleteBinding(binding.id)}
+                        />
+                      </div>
+                    </EditableListRow>
                   </div>
                 ))
               )}
             </CardContent>
-          </Card>
-        </TabsContent>
+      </Card>
 
-        <TabsContent value="pointer">
-          <MouseBindingsPanel
-            layer={layer}
-            presets={presets}
-            onChange={onChange}
-          />
-        </TabsContent>
-      </Tabs>
-    </div>
+      <MouseBindingsPanel
+        layer={layer}
+        presets={presets}
+        onChange={onChange}
+      />
+    </PanelLayout>
   )
 }
 

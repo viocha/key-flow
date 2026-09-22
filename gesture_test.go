@@ -57,6 +57,7 @@ func TestQuantizeGestureDirectionKeepsTrueDiagonal(t *testing.T) {
 
 func TestCompileConfigIncludesGesturesAndEdgeWheel(t *testing.T) {
 	config := defaultConfig()
+	config.Profiles[0].EdgeWheelMarginPX = 7
 	config.Profiles[0].Gestures = []GestureGroup{
 		{
 			ID:                "middle",
@@ -68,7 +69,6 @@ func TestCompileConfigIncludesGesturesAndEdgeWheel(t *testing.T) {
 			Bindings: []GestureBinding{
 				{
 					ID:         "close",
-					Name:       "关闭窗口",
 					Enabled:    true,
 					Directions: []string{"D", "R"},
 					Preview: []GesturePoint{
@@ -89,7 +89,6 @@ func TestCompileConfigIncludesGesturesAndEdgeWheel(t *testing.T) {
 			ID:         "volume",
 			Enabled:    true,
 			Zone:       "bottomRight",
-			MarginPX:   4,
 			Adjustment: EdgeAdjustmentVolume,
 			Step:       1,
 		},
@@ -115,6 +114,9 @@ func TestCompileConfigIncludesGesturesAndEdgeWheel(t *testing.T) {
 	if edge.up.Type != ActionVolume || edge.up.Delta != 1 {
 		t.Fatalf("edge up action = %#v", edge.up)
 	}
+	if edge.marginPX != 7 {
+		t.Fatalf("edge margin = %d, want 7", edge.marginPX)
+	}
 }
 
 func TestCompileConfigRecentAppsEdge(t *testing.T) {
@@ -124,7 +126,6 @@ func TestCompileConfigRecentAppsEdge(t *testing.T) {
 			ID:         "recent-apps",
 			Enabled:    true,
 			Zone:       "right",
-			MarginPX:   4,
 			Adjustment: EdgeAdjustmentRecentApps,
 			Step:       1,
 		},
@@ -153,7 +154,6 @@ func TestCompileConfigBidirectionalKeysEdge(t *testing.T) {
 			ID:         "tabs",
 			Enabled:    true,
 			Zone:       "left",
-			MarginPX:   4,
 			Adjustment: EdgeAdjustmentBidirectionalKeys,
 			UpKeys:     []string{"Ctrl", "Shift", "Tab"},
 			DownKeys:   []string{"Ctrl", "Tab"},

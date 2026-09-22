@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"os/exec"
+	"sync"
 	"syscall"
 	"unsafe"
 
@@ -40,6 +41,9 @@ var (
 	procGetMonitorInfoW           = user32.NewProc("GetMonitorInfoW")
 	procGetWindowLongPtrW         = user32.NewProc("GetWindowLongPtrW")
 	procGetSystemMetrics          = user32.NewProc("GetSystemMetrics")
+	procIsWindow                  = user32.NewProc("IsWindow")
+	procIsIconic                  = user32.NewProc("IsIconic")
+	procSetForegroundWindow       = user32.NewProc("SetForegroundWindow")
 	dxva2                         = windows.NewLazySystemDLL("dxva2.dll")
 	procGetNumberPhysicalMonitors = dxva2.NewProc("GetNumberOfPhysicalMonitorsFromHMONITOR")
 	procGetPhysicalMonitors       = dxva2.NewProc("GetPhysicalMonitorsFromHMONITOR")
@@ -66,6 +70,11 @@ type physicalMonitor struct {
 	Handle      windows.Handle
 	Description [128]uint16
 }
+
+var (
+	minimizedWindowsMu sync.Mutex
+	minimizedWindows   []windows.Handle
+)
 
 type windowManipulation struct {
 	hwnd       windows.Handle
@@ -255,6 +264,9 @@ func scaleWindow(hwnd windows.Handle, deltaSign int, stepPercent int) error {
 }
 
 func executeWindowAction(action Action) error {
+	if isGlobalWindowCommand(action.WindowCommand) {
+		return executeWindowActionForWindow(action, 0)
+	}
 	hwndRaw, _, _ := procGetForegroundWindow.Call()
 	if hwndRaw == 0 {
 		return nil
@@ -262,7 +274,70 @@ func executeWindowAction(action Action) error {
 	return executeWindowActionForWindow(action, windows.Handle(hwndRaw))
 }
 
+func isGlobalWindowCommand(command string) bool {
+	switch command {
+	case "previousWindow", "nextWindow", "restoreMinimized":
+		return true
+	default:
+		return false
+	}
+}
+
+func rememberMinimizedWindow(hwnd windows.Handle) {
+	if hwnd == 0 {
+		return
+	}
+	minimizedWindowsMu.Lock()
+	defer minimizedWindowsMu.Unlock()
+
+	items := minimizedWindows[:0]
+	for _, item := range minimizedWindows {
+		if item != hwnd {
+			items = append(items, item)
+		}
+	}
+	minimizedWindows = append(items, hwnd)
+	if len(minimizedWindows) > 32 {
+		minimizedWindows = append([]windows.Handle(nil), minimizedWindows[len(minimizedWindows)-32:]...)
+	}
+}
+
+func restoreLastMinimizedWindow() {
+	for {
+		minimizedWindowsMu.Lock()
+		if len(minimizedWindows) == 0 {
+			minimizedWindowsMu.Unlock()
+			return
+		}
+		index := len(minimizedWindows) - 1
+		hwnd := minimizedWindows[index]
+		minimizedWindows = minimizedWindows[:index]
+		minimizedWindowsMu.Unlock()
+
+		valid, _, _ := procIsWindow.Call(uintptr(hwnd))
+		if valid == 0 {
+			continue
+		}
+		iconic, _, _ := procIsIconic.Call(uintptr(hwnd))
+		if iconic == 0 {
+			continue
+		}
+		procShowWindow.Call(uintptr(hwnd), swRestore)
+		procSetForegroundWindow.Call(uintptr(hwnd))
+		return
+	}
+}
+
 func executeWindowActionForWindow(action Action, hwnd windows.Handle) error {
+	switch action.WindowCommand {
+	case "previousWindow":
+		return sendKeyStroke([]string{"Alt", "Shift", "Escape"})
+	case "nextWindow":
+		return sendKeyStroke([]string{"Alt", "Escape"})
+	case "restoreMinimized":
+		restoreLastMinimizedWindow()
+		return nil
+	}
 	if hwnd == 0 {
 		return nil
 	}
@@ -287,6 +362,7 @@ func executeWindowActionForWindow(action Action, hwnd windows.Handle) error {
 			return fmt.Errorf("终止目标进程失败: %w", err)
 		}
 	case "minimize":
+		rememberMinimizedWindow(hwnd)
 		procShowWindow.Call(uintptr(hwnd), swMinimize)
 	case "maximize":
 		procShowWindow.Call(uintptr(hwnd), swMaximize)

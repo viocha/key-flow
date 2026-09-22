@@ -73,7 +73,7 @@ type GesturePoint struct {
 
 type GestureBinding struct {
 	ID         string         `json:"id"`
-	Name       string         `json:"name"`
+	Name       string         `json:"name,omitempty"`
 	Enabled    bool           `json:"enabled"`
 	Directions []string       `json:"directions"`
 	Preview    []GesturePoint `json:"preview"`
@@ -115,7 +115,6 @@ type EdgeWheelRule struct {
 	ID         string             `json:"id"`
 	Enabled    bool               `json:"enabled"`
 	Zone       string             `json:"zone"`
-	MarginPX   int                `json:"marginPx"`
 	Adjustment EdgeAdjustmentType `json:"adjustment"`
 	Step       int                `json:"step"`
 	UpKeys     []string           `json:"upKeys,omitempty"`
@@ -130,6 +129,7 @@ type Profile struct {
 	Layers            []TriggerLayer  `json:"layers"`
 	Gestures          []GestureGroup  `json:"gestures"`
 	EdgeWheelsEnabled bool            `json:"edgeWheelsEnabled"`
+	EdgeWheelMarginPX int             `json:"edgeWheelMarginPx"`
 	EdgeWheels        []EdgeWheelRule `json:"edgeWheels"`
 }
 

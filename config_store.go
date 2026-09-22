@@ -111,6 +111,7 @@ func defaultConfig() AppConfig {
 				Layers:            []TriggerLayer{},
 				Gestures:          []GestureGroup{},
 				EdgeWheelsEnabled: true,
+				EdgeWheelMarginPX: 4,
 				EdgeWheels:        []EdgeWheelRule{},
 			},
 		},
@@ -172,9 +173,6 @@ func normalizeConfig(config AppConfig) AppConfig {
 		}
 		for ei := range profile.EdgeWheels {
 			rule := &profile.EdgeWheels[ei]
-			if rule.MarginPX == 0 {
-				rule.MarginPX = 4
-			}
 			if rule.Adjustment == "" {
 				rule.Adjustment = EdgeAdjustmentVolume
 			}
@@ -308,6 +306,9 @@ func validateConfig(config AppConfig) error {
 			}
 		}
 
+		if profile.EdgeWheelMarginPX < 1 || profile.EdgeWheelMarginPX > 64 {
+			return errors.New("屏幕边缘触发范围须为 1–64 像素")
+		}
 		edgeZones := map[string]struct{}{}
 		for _, rule := range profile.EdgeWheels {
 			if rule.ID == "" {
@@ -315,9 +316,6 @@ func validateConfig(config AppConfig) error {
 			}
 			if !isSupportedEdgeZone(rule.Zone) {
 				return fmt.Errorf("不支持的屏幕边缘区域: %s", rule.Zone)
-			}
-			if rule.MarginPX < 1 || rule.MarginPX > 64 {
-				return fmt.Errorf("屏幕边缘 %s 的触发范围须为 1–64 像素", rule.Zone)
 			}
 			if rule.Enabled {
 				if _, exists := edgeZones[rule.Zone]; exists {
@@ -470,24 +468,25 @@ func mouseInputLabel(input string) string {
 func validateGestureBindings(bindings []GestureBinding) error {
 	seen := map[string]string{}
 	for _, binding := range bindings {
-		if binding.ID == "" || binding.Name == "" {
-			return errors.New("手势的 ID 和名称不能为空")
+		if binding.ID == "" {
+			return errors.New("手势的 ID 不能为空")
 		}
+		label := gestureBindingLabel(binding)
 		if len(binding.Preview) < 2 {
-			return fmt.Errorf("手势 %q 缺少录制路径", binding.Name)
+			return fmt.Errorf("手势 %q 缺少录制路径", label)
 		}
 		key, err := gestureKey(binding.Directions)
 		if err != nil {
-			return fmt.Errorf("手势 %q: %w", binding.Name, err)
+			return fmt.Errorf("手势 %q: %w", label, err)
 		}
 		if binding.Enabled {
 			if previous, exists := seen[key]; exists {
-				return fmt.Errorf("手势 %q 与 %q 的路径重复", previous, binding.Name)
+				return fmt.Errorf("手势 %q 与 %q 的路径重复", previous, label)
 			}
-			seen[key] = binding.Name
+			seen[key] = label
 		}
 		if err := validateAction(binding.Action, 0); err != nil {
-			return fmt.Errorf("手势 %q 的动作无效: %w", binding.Name, err)
+			return fmt.Errorf("手势 %q 的动作无效: %w", label, err)
 		}
 	}
 	return nil
@@ -532,7 +531,7 @@ func validateAction(action Action, depth int) error {
 		}
 	case ActionWindow:
 		switch action.WindowCommand {
-		case "close", "terminateProcess", "minimize", "maximize", "restore", "toggleMaximize":
+		case "close", "terminateProcess", "minimize", "maximize", "restore", "toggleMaximize", "previousWindow", "nextWindow", "restoreMinimized":
 		case "alwaysOnTop":
 			if _, err := parseWindowBorderColor(action.WindowBorderColor); err != nil {
 				return err

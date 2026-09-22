@@ -6,6 +6,40 @@ import (
 	"strings"
 )
 
+func gestureBindingLabel(binding GestureBinding) string {
+	if name := strings.TrimSpace(binding.Name); name != "" {
+		return name
+	}
+	if binding.Action.Type == ActionWindow {
+		switch binding.Action.WindowCommand {
+		case "close":
+			return "关闭窗口"
+		case "terminateProcess":
+			return "终止进程"
+		case "previousWindow":
+			return "切换上一个窗口"
+		case "nextWindow":
+			return "切换下一个窗口"
+		case "minimize":
+			return "最小化窗口"
+		case "restoreMinimized":
+			return "恢复最小化窗口"
+		case "maximize":
+			return "最大化窗口"
+		case "restore":
+			return "恢复窗口"
+		case "toggleMaximize":
+			return "切换最大化"
+		case "alwaysOnTop":
+			return "切换置顶"
+		}
+	}
+	if name := strings.TrimSpace(binding.Action.Name); name != "" {
+		return name
+	}
+	return "手势"
+}
+
 var gestureDirections = map[string]struct{}{
 	"U": {}, "D": {}, "L": {}, "R": {},
 	"UL": {}, "UR": {}, "DL": {}, "DR": {},

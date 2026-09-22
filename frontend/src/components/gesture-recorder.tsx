@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react"
 import type { GesturePoint } from "../../bindings/key-flow"
 
+import { GestureEndpointArrow } from "@/components/gesture-endpoint-arrow"
 import { gestureDirectionLabel } from "@/lib/app-model"
 
 type RawPoint = {
@@ -31,6 +32,11 @@ export function GestureRecorder({
       y: clamp01((point.y - rect.top) / Math.max(1, rect.height)),
     }))
   }, [drawing, preview])
+  const visibleDirections = drawing
+    ? directionsFromPoints(drawing.points)
+    : (directions ?? [])
+  const endpoint = visiblePreview[visiblePreview.length - 1]
+  const endpointDirection = visibleDirections[visibleDirections.length - 1]
 
   const finish = (points: RawPoint[]) => {
     const element = boxRef.current
@@ -93,6 +99,7 @@ export function GestureRecorder({
         onPointerCancel={() => setDrawing(null)}
       >
         {visiblePreview.length >= 2 ? (
+          <>
           <svg
             viewBox="0 0 100 100"
             preserveAspectRatio="none"
@@ -105,13 +112,22 @@ export function GestureRecorder({
                 .join(" ")}
               fill="none"
               stroke="currentColor"
-              strokeWidth="1.6"
+              strokeWidth="1.5"
               vectorEffect="non-scaling-stroke"
               strokeLinecap="round"
               strokeLinejoin="round"
               className="text-foreground"
             />
           </svg>
+          {endpoint && (
+            <GestureEndpointArrow
+              x={endpoint.x}
+              y={endpoint.y}
+              direction={endpointDirection}
+              size={16}
+            />
+          )}
+          </>
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
             按住鼠标拖动录制
@@ -136,22 +152,37 @@ function clamp01(value: number) {
 function directionsFromPoints(points: RawPoint[]) {
   if (points.length < 2) return []
 
-  const result: string[] = []
+  const segments: { direction: string; distance: number }[] = []
   let anchor = points[0]
   const threshold = 24
+  const terminalTurnThreshold = 36
 
   for (const point of points.slice(1)) {
     const dx = point.x - anchor.x
     const dy = point.y - anchor.y
-    if (Math.hypot(dx, dy) < threshold) continue
+    const distance = Math.hypot(dx, dy)
+    if (distance < threshold) continue
 
     const direction = quantizeDirection(dx, dy)
-    if (result[result.length - 1] !== direction) {
-      result.push(direction)
+    const last = segments[segments.length - 1]
+    if (last?.direction === direction) {
+      last.distance += distance
+    } else {
+      segments.push({ direction, distance })
     }
     anchor = point
   }
-  return simplifyDirections(result)
+
+  // 收手时常会产生一小段横向或斜向抖动。方向发生变化后需要再持续
+  // 一段距离才把它视为有效的末段，避免污染保存结果和终点箭头。
+  if (
+    segments.length > 1 &&
+    segments[segments.length - 1].distance < terminalTurnThreshold
+  ) {
+    segments.pop()
+  }
+
+  return simplifyDirections(segments.map((segment) => segment.direction))
 }
 
 function simplifyDirections(directions: string[]) {

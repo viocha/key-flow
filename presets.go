@@ -21,7 +21,10 @@ func actionPresets() []ActionPreset {
 
 		{ID: "window-close", Group: "窗口", Name: "关闭窗口", Action: Action{Type: ActionWindow, WindowCommand: "close"}},
 		{ID: "window-terminate-process", Group: "窗口", Name: "终止进程", Action: Action{Type: ActionWindow, WindowCommand: "terminateProcess"}},
+		{ID: "window-previous", Group: "窗口", Name: "切换上一个窗口", Action: Action{Type: ActionWindow, WindowCommand: "previousWindow"}},
+		{ID: "window-next", Group: "窗口", Name: "切换下一个窗口", Action: Action{Type: ActionWindow, WindowCommand: "nextWindow"}},
 		{ID: "window-minimize", Group: "窗口", Name: "最小化窗口", Action: Action{Type: ActionWindow, WindowCommand: "minimize"}},
+		{ID: "window-restore-minimized", Group: "窗口", Name: "恢复最小化窗口", Action: Action{Type: ActionWindow, WindowCommand: "restoreMinimized"}},
 		{ID: "window-maximize", Group: "窗口", Name: "最大化窗口", Action: Action{Type: ActionWindow, WindowCommand: "maximize"}},
 		{ID: "window-toggle-maximize", Group: "窗口", Name: "切换最大化", Action: Action{Type: ActionWindow, WindowCommand: "toggleMaximize"}},
 		{ID: "window-topmost", Group: "窗口", Name: "切换置顶", Action: Action{Type: ActionWindow, WindowCommand: "alwaysOnTop", WindowBorderColor: "#34A9DE", WindowBorderSize: 2}},
