@@ -159,7 +159,11 @@ func (s *windowsInputState) handleMouse(message uint32, data *msLLHookStruct) bo
 				trigger.used = true
 				s.engine.enqueueActionContext(
 					action,
-					captureActionContext(targetWindowAtPoint(pt), pt),
+					captureActionContext(
+						targetWindowAtPoint(pt),
+						pt,
+						s.suppressedModifierNamesLocked()...,
+					),
 				)
 				s.pointerCapture = &pointerCapture{
 					button:  button,
@@ -204,7 +208,11 @@ func (s *windowsInputState) handleMouse(message uint32, data *msLLHookStruct) bo
 				trigger.used = true
 				s.engine.enqueueActionContext(
 					action,
-					captureActionContext(targetWindowAtPoint(pt), pt),
+					captureActionContext(
+						targetWindowAtPoint(pt),
+						pt,
+						s.suppressedModifierNamesLocked()...,
+					),
 				)
 				return true
 			}

@@ -47,10 +47,11 @@ type compiledConfig struct {
 }
 
 type ActionContext struct {
-	Window      uintptr
-	CursorX     int32
-	CursorY     int32
-	TriggeredAt time.Time
+	Window              uintptr
+	CursorX             int32
+	CursorY             int32
+	TriggeredAt         time.Time
+	SuppressedModifiers []string
 }
 
 type InputEngine struct {

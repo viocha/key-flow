@@ -209,32 +209,34 @@ type pointerMoveRequest struct {
 type windowsInputState struct {
 	engine *InputEngine
 
-	mu                 sync.Mutex
-	threadID           uint32
-	keyboardHook       windows.Handle
-	mouseHook          windows.Handle
-	closed             bool
-	down               map[uint32]bool
-	swallowKeyUp       map[uint32]bool
-	trigger            *activeTrigger
-	gesture            *activeGesture
-	pointerCapture     *pointerCapture
-	edgeSwitcherActive bool
-	cursorWindow       windows.Handle
-	pointerMoves       chan pointerMoveRequest
-	pointerTasks       chan func()
-	pointerStop        chan struct{}
-	pointerWG          sync.WaitGroup
+	mu                  sync.Mutex
+	threadID            uint32
+	keyboardHook        windows.Handle
+	mouseHook           windows.Handle
+	closed              bool
+	down                map[uint32]bool
+	swallowKeyUp        map[uint32]bool
+	suppressedModifiers map[uint32]bool
+	trigger             *activeTrigger
+	gesture             *activeGesture
+	pointerCapture      *pointerCapture
+	edgeSwitcherActive  bool
+	cursorWindow        windows.Handle
+	pointerMoves        chan pointerMoveRequest
+	pointerTasks        chan func()
+	pointerStop         chan struct{}
+	pointerWG           sync.WaitGroup
 }
 
 func startPlatformInputEngine(engine *InputEngine) (func(), error) {
 	state := &windowsInputState{
-		engine:       engine,
-		down:         make(map[uint32]bool),
-		swallowKeyUp: make(map[uint32]bool),
-		pointerMoves: make(chan pointerMoveRequest, 1),
-		pointerTasks: make(chan func(), 32),
-		pointerStop:  make(chan struct{}),
+		engine:              engine,
+		down:                make(map[uint32]bool),
+		swallowKeyUp:        make(map[uint32]bool),
+		suppressedModifiers: make(map[uint32]bool),
+		pointerMoves:        make(chan pointerMoveRequest, 1),
+		pointerTasks:        make(chan func(), 32),
+		pointerStop:         make(chan struct{}),
 	}
 	ready := make(chan error, 1)
 
@@ -398,20 +400,25 @@ func (s *windowsInputState) handleKeyboard(message uint32, vk uint32) bool {
 		}
 	}
 
+	if isUp {
+		delete(s.down, vk)
+		if s.swallowKeyUp[vk] {
+			delete(s.swallowKeyUp, vk)
+			delete(s.suppressedModifiers, vk)
+			return true
+		}
+		delete(s.suppressedModifiers, vk)
+		return false
+	}
+
 	config := s.engine.snapshot()
 	if !config.enabled {
-		if isUp {
-			delete(s.down, vk)
-		}
 		return false
 	}
 
 	// Editing and shortcut recording inside Key Flow must not trigger
 	// already-active global rules.
 	if ownProcessForeground() {
-		if isUp {
-			delete(s.down, vk)
-		}
 		return false
 	}
 
@@ -422,13 +429,13 @@ func (s *windowsInputState) handleKeyboard(message uint32, vk uint32) bool {
 		}
 	}
 
-	if isUp {
-		delete(s.down, vk)
-		if s.swallowKeyUp[vk] {
-			delete(s.swallowKeyUp, vk)
+	if s.trigger != nil {
+		modifier := keyNameFromVK(vk)
+		if isModifierKey(modifier) && layerUsesModifier(s.trigger.layer, modifier) {
+			s.swallowKeyUp[vk] = true
+			s.suppressedModifiers[vk] = true
 			return true
 		}
-		return false
 	}
 
 	mainKey := keyNameFromVK(vk)
@@ -447,7 +454,11 @@ func (s *windowsInputState) handleKeyboard(message uint32, vk uint32) bool {
 			s.swallowKeyUp[vk] = true
 			s.engine.enqueueActionContext(
 				action,
-				captureActionContext(s.trigger.targetWindow, cursorPoint()),
+				captureActionContext(
+					s.trigger.targetWindow,
+					cursorPoint(),
+					s.suppressedModifierNamesLocked()...,
+				),
 			)
 			return true
 		}
@@ -588,6 +599,42 @@ func (s *windowsInputState) modifierDownLocked(name string) bool {
 	default:
 		return false
 	}
+}
+
+func (s *windowsInputState) suppressedModifierNamesLocked() []string {
+	seen := make(map[string]bool, 4)
+	for vk := range s.suppressedModifiers {
+		name := keyNameFromVK(vk)
+		if isModifierKey(name) {
+			seen[name] = true
+		}
+	}
+
+	modifiers := make([]string, 0, len(seen))
+	for _, name := range []string{"Ctrl", "Shift", "Alt", "Win"} {
+		if seen[name] {
+			modifiers = append(modifiers, name)
+		}
+	}
+	return modifiers
+}
+
+func layerUsesModifier(layer compiledLayer, modifier string) bool {
+	for chord := range layer.bindings {
+		for _, part := range strings.Split(chord, "+") {
+			if part == modifier {
+				return true
+			}
+		}
+	}
+	for shortcut := range layer.mouseShortcuts {
+		for _, part := range strings.Split(shortcut, "+") {
+			if part == modifier {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func mouseTriggerFromMessage(message uint32, mouseData uint32) (name string, isDown bool, isUp bool) {
@@ -756,7 +803,7 @@ func vkFromKeyName(name string) (uint16, bool) {
 func executePlatformActionContext(action Action, context ActionContext, keyInterval time.Duration) error {
 	switch action.Type {
 	case ActionKeyStroke:
-		return sendKeyStroke(action.Keys)
+		return sendKeyStrokeWithSuppressedModifiers(action.Keys, context.SuppressedModifiers)
 	case ActionText:
 		return sendText(action.Text)
 	case ActionLaunch:
@@ -773,7 +820,7 @@ func executePlatformActionContext(action Action, context ActionContext, keyInter
 		}
 		return nil
 	case ActionEdit:
-		return executeEditAction(action, keyInterval)
+		return executeEditAction(action, keyInterval, context.SuppressedModifiers)
 	case ActionWindow:
 		if context.Window != 0 {
 			return executeWindowActionForWindow(action, windows.Handle(context.Window))
@@ -806,6 +853,10 @@ func sendOriginalTrigger(name string) error {
 }
 
 func sendKeyStroke(keys []string) error {
+	return sendKeyStrokeWithSuppressedModifiers(keys, nil)
+}
+
+func sendKeyStrokeWithSuppressedModifiers(keys []string, suppressedModifiers []string) error {
 	chord, err := canonicalChord(keys)
 	if err != nil {
 		return err
@@ -823,6 +874,10 @@ func sendKeyStroke(keys []string) error {
 	desiredModifiers := make(map[string]bool, 4)
 	for _, part := range parts[:len(parts)-1] {
 		desiredModifiers[part] = true
+	}
+	suppressed := make(map[string]bool, len(suppressedModifiers))
+	for _, name := range suppressedModifiers {
+		suppressed[normalizeKeyName(name)] = true
 	}
 
 	modifiers := []struct {
@@ -842,7 +897,7 @@ func sendKeyStroke(keys []string) error {
 	// action, then restore the modifier state while the user is still holding it.
 	releasedModifiers := make([]pressedKey, 0, 4)
 	for _, modifier := range modifiers {
-		if desiredModifiers[modifier.name] || !keyPressed(uint32(modifier.vk)) {
+		if suppressed[modifier.name] || desiredModifiers[modifier.name] || !keyPressed(uint32(modifier.vk)) {
 			continue
 		}
 		if err := sendVirtualKey(modifier.vk, true, modifier.extended); err != nil {
@@ -875,7 +930,7 @@ func sendKeyStroke(keys []string) error {
 			main = key
 			continue
 		}
-		if !keyPressed(uint32(vk)) {
+		if suppressed[part] || !keyPressed(uint32(vk)) {
 			if err := sendVirtualKey(key.vk, false, key.extended); err != nil {
 				return err
 			}
@@ -1025,12 +1080,13 @@ func keyPressed(vk uint32) bool {
 	return uint16(value)&0x8000 != 0
 }
 
-func captureActionContext(hwnd windows.Handle, pt point) ActionContext {
+func captureActionContext(hwnd windows.Handle, pt point, suppressedModifiers ...string) ActionContext {
 	return ActionContext{
-		Window:      uintptr(hwnd),
-		CursorX:     pt.X,
-		CursorY:     pt.Y,
-		TriggeredAt: time.Now(),
+		Window:              uintptr(hwnd),
+		CursorX:             pt.X,
+		CursorY:             pt.Y,
+		TriggeredAt:         time.Now(),
+		SuppressedModifiers: append([]string(nil), suppressedModifiers...),
 	}
 }
 

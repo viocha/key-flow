@@ -8,8 +8,9 @@ import (
 )
 
 type editActionRunner struct {
-	interval time.Duration
-	started  bool
+	interval            time.Duration
+	suppressedModifiers []string
+	started             bool
 }
 
 func (r *editActionRunner) send(keys []string) error {
@@ -17,11 +18,14 @@ func (r *editActionRunner) send(keys []string) error {
 		time.Sleep(r.interval)
 	}
 	r.started = true
-	return sendKeyStroke(keys)
+	return sendKeyStrokeWithSuppressedModifiers(keys, r.suppressedModifiers)
 }
 
-func executeEditAction(action Action, keyInterval time.Duration) error {
-	runner := &editActionRunner{interval: keyInterval}
+func executeEditAction(action Action, keyInterval time.Duration, suppressedModifiers []string) error {
+	runner := &editActionRunner{
+		interval:            keyInterval,
+		suppressedModifiers: suppressedModifiers,
+	}
 	switch action.EditCommand {
 	case "deleteLine":
 		if err := selectCurrentLine(runner, true); err != nil {
