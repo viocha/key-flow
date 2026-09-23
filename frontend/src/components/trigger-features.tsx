@@ -7,6 +7,7 @@ import { PlusIcon } from "lucide-react"
 
 import { ActionEditor } from "@/components/action-editor"
 import { EditableListRow } from "@/components/editable-list-row"
+import { ReorderHandle, useListReorder } from "@/components/list-reorder"
 import { RuleContextMenu } from "@/components/rule-context-menu"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -87,6 +88,11 @@ export function MouseBindingsPanel({
   >({ open: false })
   const layerRef = useRef(layer)
   layerRef.current = layer
+  const reorder = useListReorder(
+    layer.mouseShortcuts,
+    mouseShortcutKey,
+    (mouseShortcuts) => onChange({ ...layer, mouseShortcuts }),
+  )
 
   const triggerInput = mouseInputForTrigger(layer.trigger)
   const shortcutInputs = new Set(
@@ -120,12 +126,16 @@ export function MouseBindingsPanel({
     binding: MouseShortcutBinding,
     originalKey?: string,
   ) => {
-    const next = layer.mouseShortcuts.filter(
-      (item) => mouseShortcutKey(item) !== originalKey,
+    const exists = layer.mouseShortcuts.some(
+      (item) => mouseShortcutKey(item) === originalKey,
     )
     onChange({
       ...layer,
-      mouseShortcuts: [...next, binding],
+      mouseShortcuts: exists
+        ? layer.mouseShortcuts.map((item) =>
+            mouseShortcutKey(item) === originalKey ? binding : item,
+          )
+        : [...layer.mouseShortcuts, binding],
     })
   }
 
@@ -223,7 +233,7 @@ export function MouseBindingsPanel({
       </div>
 
       <Card className="gap-0 py-0">
-        <CardContent className="px-0">
+        <CardContent className="px-0" {...reorder.listProps()}>
           {layer.mouseShortcuts.length === 0 ? (
             <Empty className="min-h-40">
               <EmptyHeader>
@@ -234,8 +244,8 @@ export function MouseBindingsPanel({
             layer.mouseShortcuts.map((binding, index) => {
               const bindingKey = mouseShortcutKey(binding)
               return (
-                <div key={bindingKey}>
-                  {index > 0 && <Separator />}
+                <div key={bindingKey} {...reorder.itemProps(bindingKey)}>
+                  {index > 0 && <Separator className={reorder.separatorClassName(index)} />}
                   <RuleContextMenu
                     enabled={binding.enabled}
                     toggleDisabled={
@@ -256,6 +266,7 @@ export function MouseBindingsPanel({
                       })
                     }
                   >
+                    {reorder.canReorder && <ReorderHandle props={reorder.handleProps(bindingKey)} />}
                     <div className="w-40 shrink-0 text-sm font-medium">
                       {mouseShortcutLabel(binding)}
                     </div>

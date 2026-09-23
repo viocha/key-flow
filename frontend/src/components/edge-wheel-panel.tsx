@@ -10,6 +10,7 @@ import {
 import { EditableListRow } from "@/components/editable-list-row"
 import { EdgeWheelDialog } from "@/components/feature-dialogs"
 import { KeyChord } from "@/components/key-chord"
+import { ReorderHandle, useListReorder } from "@/components/list-reorder"
 import { PanelLayout } from "@/components/panel-layout"
 import { RuleContextMenu } from "@/components/rule-context-menu"
 import { Badge } from "@/components/ui/badge"
@@ -57,6 +58,7 @@ export function EdgeWheelPanel({
   const [marginDraft, setMarginDraft] = useState(marginPx)
   const rulesRef = useRef(rules)
   rulesRef.current = rules
+  const reorder = useListReorder(rules, (rule) => rule.id, onChange)
 
   const saveRule = (rule: EdgeWheelRule) => {
     const exists = rules.some((item) => item.id === rule.id)
@@ -118,7 +120,7 @@ export function EdgeWheelPanel({
       }
     >
       <Card className="gap-0 py-0">
-        <CardContent className="px-0">
+        <CardContent className="px-0" {...reorder.listProps()}>
           {rules.length === 0 ? (
             <Empty className="min-h-40">
               <EmptyHeader>
@@ -127,8 +129,8 @@ export function EdgeWheelPanel({
             </Empty>
           ) : (
             rules.map((rule, index) => (
-              <div key={rule.id}>
-                {index > 0 && <Separator />}
+              <div key={rule.id} {...reorder.itemProps(rule.id)}>
+                {index > 0 && <Separator className={reorder.separatorClassName(index)} />}
                 <RuleContextMenu
                   enabled={rule.enabled}
                   onToggle={() => saveRule({ ...rule, enabled: !rule.enabled })}
@@ -136,6 +138,7 @@ export function EdgeWheelPanel({
                   onDelete={() => deleteRule(rule, index)}
                 >
                 <EditableListRow onEdit={() => setDialog({ open: true, rule })}>
+                  {reorder.canReorder && <ReorderHandle props={reorder.handleProps(rule.id)} />}
                   <div className="w-24 shrink-0 text-sm font-medium">
                     {edgeZoneLabel(rule.zone)}
                   </div>

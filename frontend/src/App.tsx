@@ -22,6 +22,7 @@ import { RuleContextMenu } from "@/components/rule-context-menu"
 import { GestureGroupDialog } from "@/components/feature-dialogs"
 import { GestureGroupPanel } from "@/components/gesture-group-panel"
 import { KeyChord } from "@/components/key-chord"
+import { ReorderHandle, useListReorder } from "@/components/list-reorder"
 import {
   AddButton,
   BindingDialog,
@@ -645,6 +646,9 @@ function App() {
                   }))
                 }
                 onDelete={deleteHotkey}
+                onReorder={(hotkeys) =>
+                  updateProfile((current) => ({ ...current, hotkeys }))
+                }
               />
             )}
 
@@ -792,6 +796,7 @@ function HotkeysPanel({
   onEdit,
   onToggle,
   onDelete,
+  onReorder,
 }: {
   profile: UiProfile
   onEnabledChange: (enabled: boolean) => void
@@ -799,7 +804,9 @@ function HotkeysPanel({
   onEdit: (rule: HotkeyRule) => void
   onToggle: (id: string, enabled: boolean) => void
   onDelete: (id: string) => void
+  onReorder: (hotkeys: HotkeyRule[]) => void
 }) {
+  const reorder = useListReorder(profile.hotkeys, (rule) => rule.id, onReorder)
   return (
     <PanelLayout
       header={
@@ -818,7 +825,7 @@ function HotkeysPanel({
       }
     >
       <Card className="gap-0 py-0">
-        <CardContent className="px-0">
+        <CardContent className="px-0" {...reorder.listProps()}>
           {profile.hotkeys.length === 0 ? (
             <Empty className="min-h-40">
               <EmptyHeader>
@@ -827,8 +834,8 @@ function HotkeysPanel({
             </Empty>
           ) : (
             profile.hotkeys.map((rule, index) => (
-            <div key={rule.id}>
-              {index > 0 && <Separator />}
+            <div key={rule.id} {...reorder.itemProps(rule.id)}>
+              {index > 0 && <Separator className={reorder.separatorClassName(index)} />}
               <RuleContextMenu
                 enabled={rule.enabled}
                 onToggle={() => onToggle(rule.id, !rule.enabled)}
@@ -836,6 +843,7 @@ function HotkeysPanel({
                 onDelete={() => onDelete(rule.id)}
               >
               <EditableListRow onEdit={() => onEdit(rule)}>
+                {reorder.canReorder && <ReorderHandle props={reorder.handleProps(rule.id)} />}
                 <div className="w-40 shrink-0">
                   <KeyChord keys={hotkeyInputKeys(rule)} />
                 </div>
@@ -875,6 +883,11 @@ function LayerPanel({
   onEditBinding: (binding: LayerBinding) => void
   onDeleteBinding: (bindingId: string) => void
 }) {
+  const reorder = useListReorder(
+    layer.bindings,
+    (binding) => binding.id,
+    (bindings) => onChange({ ...layer, bindings }),
+  )
   return (
     <PanelLayout
       header={
@@ -907,7 +920,7 @@ function LayerPanel({
       </div>
 
       <Card className="gap-0 py-0">
-            <CardContent className="px-0">
+            <CardContent className="px-0" {...reorder.listProps()}>
               {layer.bindings.length === 0 ? (
                 <Empty className="min-h-40">
                   <EmptyHeader>
@@ -916,8 +929,8 @@ function LayerPanel({
                 </Empty>
               ) : (
                 layer.bindings.map((binding, index) => (
-                  <div key={binding.id}>
-                    {index > 0 && <Separator />}
+                  <div key={binding.id} {...reorder.itemProps(binding.id)}>
+                    {index > 0 && <Separator className={reorder.separatorClassName(index)} />}
                     <RuleContextMenu
                       enabled={binding.enabled}
                       onToggle={() => onChange({
@@ -930,6 +943,7 @@ function LayerPanel({
                       onDelete={() => onDeleteBinding(binding.id)}
                     >
                     <EditableListRow onEdit={() => onEditBinding(binding)}>
+                      {reorder.canReorder && <ReorderHandle props={reorder.handleProps(binding.id)} />}
                       <div className="w-36 shrink-0">
                         <KeyChord keys={binding.keys} />
                       </div>

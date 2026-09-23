@@ -13,6 +13,7 @@ import {
 import { EditableListRow } from "@/components/editable-list-row"
 import { GestureEndpointArrow } from "@/components/gesture-endpoint-arrow"
 import { GestureDialog } from "@/components/feature-dialogs"
+import { ReorderHandle, useListReorder } from "@/components/list-reorder"
 import { PanelLayout } from "@/components/panel-layout"
 import { RuleContextMenu } from "@/components/rule-context-menu"
 import { Badge } from "@/components/ui/badge"
@@ -107,6 +108,11 @@ export function GestureGroupPanel({
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const groupRef = useRef(group)
   groupRef.current = group
+  const reorder = useListReorder(
+    group.bindings,
+    (binding) => binding.id,
+    (bindings) => onChange({ ...group, bindings }),
+  )
 
   const saveBinding = (binding: GestureBinding) => {
     const exists = group.bindings.some((item) => item.id === binding.id)
@@ -190,7 +196,7 @@ export function GestureGroupPanel({
       }
     >
       <Card className="gap-0 py-0">
-        <CardContent className="px-0">
+        <CardContent className="px-0" {...reorder.listProps()}>
           {group.bindings.length === 0 ? (
             <Empty className="min-h-40">
               <EmptyHeader>
@@ -202,8 +208,8 @@ export function GestureGroupPanel({
               const label = gestureBindingLabel(binding)
               const customName = binding.name?.trim()
               return (
-                <div key={binding.id}>
-                  {index > 0 && <Separator />}
+                <div key={binding.id} {...reorder.itemProps(binding.id)}>
+                  {index > 0 && <Separator className={reorder.separatorClassName(index)} />}
                   <RuleContextMenu
                     enabled={binding.enabled}
                     onToggle={() => saveBinding({ ...binding, enabled: !binding.enabled })}
@@ -213,6 +219,7 @@ export function GestureGroupPanel({
                   <EditableListRow
                     onEdit={() => setDialog({ open: true, binding })}
                   >
+                    {reorder.canReorder && <ReorderHandle props={reorder.handleProps(binding.id)} />}
                     <GesturePathPreview
                       preview={binding.preview!}
                       directions={binding.directions}
