@@ -129,6 +129,16 @@ func normalizeKeyName(value string) string {
 		return "ArrowDown"
 	case "tab":
 		return "Tab"
+	case "printscreen", "prtsc":
+		return "PrintScreen"
+	case "scrolllock":
+		return "ScrollLock"
+	case "pause", "break":
+		return "Pause"
+	case "numlock":
+		return "NumLock"
+	case "contextmenu", "apps":
+		return "ContextMenu"
 	case "volumeup":
 		return "VolumeUp"
 	case "volumedown":
@@ -173,7 +183,8 @@ func isSupportedKey(key string) bool {
 	case "CapsLock", "Escape", "Enter", "Space", "Backspace", "Delete", "Insert",
 		"Home", "End", "PageUp", "PageDown", "ArrowLeft", "ArrowRight", "ArrowUp",
 		"ArrowDown", "Tab", "VolumeUp", "VolumeDown", "VolumeMute",
-		"MediaPlayPause", "MediaNext", "MediaPrev":
+		"MediaPlayPause", "MediaNext", "MediaPrev", "PrintScreen", "ScrollLock",
+		"Pause", "NumLock", "ContextMenu":
 		return true
 	}
 	if strings.HasPrefix(key, "F") {

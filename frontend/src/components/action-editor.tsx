@@ -272,6 +272,7 @@ export function ActionEditor({
           <KeyRecorder
             value={action.keys}
             onChange={(keys) => onChange({ ...action, keys })}
+            allowWinModifier
           />
         </Field>
       )}

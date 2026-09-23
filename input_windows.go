@@ -44,6 +44,7 @@ const (
 	vkShift    = 0x10
 	vkControl  = 0x11
 	vkMenu     = 0x12
+	vkPause    = 0x13
 	vkCapital  = 0x14
 	vkEscape   = 0x1B
 	vkSpace    = 0x20
@@ -55,10 +56,14 @@ const (
 	vkUp       = 0x26
 	vkRight    = 0x27
 	vkDown     = 0x28
+	vkPrint    = 0x2C
 	vkInsert   = 0x2D
 	vkDelete   = 0x2E
 	vkLWin     = 0x5B
 	vkRWin     = 0x5C
+	vkApps     = 0x5D
+	vkNumLock  = 0x90
+	vkScroll   = 0x91
 	vkLShift   = 0xA0
 	vkRShift   = 0xA1
 	vkLControl = 0xA2
@@ -714,6 +719,16 @@ func keyNameFromVK(vk uint32) string {
 		return "ArrowDown"
 	case vkTab:
 		return "Tab"
+	case vkPrint:
+		return "PrintScreen"
+	case vkScroll:
+		return "ScrollLock"
+	case vkPause:
+		return "Pause"
+	case vkNumLock:
+		return "NumLock"
+	case vkApps:
+		return "ContextMenu"
 	case vkVolumeUp:
 		return "VolumeUp"
 	case vkVolumeDown:
@@ -785,6 +800,16 @@ func vkFromKeyName(name string) (uint16, bool) {
 		return vkDown, true
 	case "Tab":
 		return vkTab, true
+	case "PrintScreen":
+		return vkPrint, true
+	case "ScrollLock":
+		return vkScroll, true
+	case "Pause":
+		return vkPause, true
+	case "NumLock":
+		return vkNumLock, true
+	case "ContextMenu":
+		return vkApps, true
 	case "VolumeUp":
 		return vkVolumeUp, true
 	case "VolumeDown":
@@ -863,10 +888,25 @@ func sendKeyStrokeWithSuppressedModifiers(keys []string, suppressedModifiers []s
 	if err != nil {
 		return err
 	}
-	parts := strings.Split(chord, "+")
-	if len(parts) == 0 {
-		return nil
+	inputs, err := keyStrokeInputs(chord, suppressedModifiers, func(vk uint16) bool {
+		return keyPressed(uint32(vk))
+	})
+	if err != nil {
+		return err
 	}
+	sent, _, callErr := procSendInput.Call(
+		uintptr(len(inputs)),
+		uintptr(unsafe.Pointer(&inputs[0])),
+		unsafe.Sizeof(inputs[0]),
+	)
+	if sent != uintptr(len(inputs)) {
+		return fmt.Errorf("SendInput 发送组合键失败: %v", callErr)
+	}
+	return nil
+}
+
+func keyStrokeInputs(chord string, suppressedModifiers []string, pressed func(uint16) bool) ([]keyboardInput, error) {
+	parts := strings.Split(chord, "+")
 
 	type pressedKey struct {
 		vk       uint16
@@ -893,31 +933,40 @@ func sendKeyStrokeWithSuppressedModifiers(keys []string, suppressedModifiers []s
 		{name: "Win", vk: vkLWin, extended: true},
 	}
 
-	// A binding may itself use modifiers that are not part of the emitted
-	// keystroke, e.g. Ctrl+H -> ArrowLeft. Temporarily release those physical
-	// modifiers so the target application receives exactly the configured
-	// action, then restore the modifier state while the user is still holding it.
-	releasedModifiers := make([]pressedKey, 0, 4)
-	for _, modifier := range modifiers {
-		if suppressed[modifier.name] || desiredModifiers[modifier.name] || !keyPressed(uint32(modifier.vk)) {
-			continue
+	inputs := make([]keyboardInput, 0, 18)
+	appendKey := func(key pressedKey, up bool) {
+		flags := uint32(0)
+		if up {
+			flags |= keyeventfKeyUp
 		}
-		if err := sendVirtualKey(modifier.vk, true, modifier.extended); err != nil {
-			for _, key := range releasedModifiers {
-				_ = sendVirtualKey(key.vk, false, key.extended)
-			}
-			return err
+		if key.extended {
+			flags |= keyeventfExtendedKey
 		}
-		releasedModifiers = append(releasedModifiers, pressedKey{
-			vk:       modifier.vk,
-			extended: modifier.extended,
+		inputs = append(inputs, keyboardInput{
+			Type: inputKeyboard,
+			Ki:   keybdInput{Vk: key.vk, Flags: flags, ExtraInfo: keyRunnerInputMarker},
 		})
 	}
-	defer func() {
-		for _, key := range releasedModifiers {
-			_ = sendVirtualKey(key.vk, false, key.extended)
+	modifierPressed := func(name string, vk uint16) bool {
+		if name == "Win" {
+			return pressed(vkLWin) || pressed(vkRWin)
 		}
-	}()
+		return pressed(vk)
+	}
+
+	// 先释放与目标组合键无关的实体修饰键，发送后恢复。
+	releasedModifiers := make([]pressedKey, 0, 4)
+	for _, modifier := range modifiers {
+		if suppressed[modifier.name] || desiredModifiers[modifier.name] || !modifierPressed(modifier.name, modifier.vk) {
+			continue
+		}
+		key := pressedKey{vk: modifier.vk, extended: modifier.extended}
+		if modifier.name == "Win" && !pressed(vkLWin) {
+			key.vk = vkRWin
+		}
+		appendKey(key, true)
+		releasedModifiers = append(releasedModifiers, key)
+	}
 
 	injectedModifiers := make([]pressedKey, 0, 4)
 	var main pressedKey
@@ -925,61 +974,28 @@ func sendKeyStrokeWithSuppressedModifiers(keys []string, suppressedModifiers []s
 	for i, part := range parts {
 		vk, ok := vkFromKeyName(part)
 		if !ok {
-			return fmt.Errorf("无法模拟按键: %s", part)
+			return nil, fmt.Errorf("无法模拟按键: %s", part)
 		}
 		key := pressedKey{vk: vk, extended: isExtendedVK(vk)}
 		if i == len(parts)-1 {
 			main = key
 			continue
 		}
-		if suppressed[part] || !keyPressed(uint32(vk)) {
-			if err := sendVirtualKey(key.vk, false, key.extended); err != nil {
-				return err
-			}
+		if suppressed[part] || !modifierPressed(part, vk) {
+			appendKey(key, false)
 			injectedModifiers = append(injectedModifiers, key)
 		}
 	}
 
-	if err := sendVirtualKey(main.vk, false, main.extended); err != nil {
-		return err
-	}
-	if err := sendVirtualKey(main.vk, true, main.extended); err != nil {
-		return err
-	}
+	appendKey(main, false)
+	appendKey(main, true)
 	for i := len(injectedModifiers) - 1; i >= 0; i-- {
-		key := injectedModifiers[i]
-		if err := sendVirtualKey(key.vk, true, key.extended); err != nil {
-			return err
-		}
+		appendKey(injectedModifiers[i], true)
 	}
-	return nil
-}
-
-func sendVirtualKey(vk uint16, up bool, extended bool) error {
-	flags := uint32(0)
-	if up {
-		flags |= keyeventfKeyUp
+	for i := len(releasedModifiers) - 1; i >= 0; i-- {
+		appendKey(releasedModifiers[i], false)
 	}
-	if extended {
-		flags |= keyeventfExtendedKey
-	}
-	input := keyboardInput{
-		Type: inputKeyboard,
-		Ki: keybdInput{
-			Vk:        vk,
-			Flags:     flags,
-			ExtraInfo: keyRunnerInputMarker,
-		},
-	}
-	sent, _, callErr := procSendInput.Call(
-		1,
-		uintptr(unsafe.Pointer(&input)),
-		unsafe.Sizeof(input),
-	)
-	if sent != 1 {
-		return fmt.Errorf("SendInput 发送按键失败: %v", callErr)
-	}
-	return nil
+	return inputs, nil
 }
 
 func sendText(text string) error {
@@ -1104,7 +1120,7 @@ func ownProcessForeground() bool {
 
 func isExtendedVK(vk uint16) bool {
 	switch vk {
-	case vkInsert, vkDelete, vkHome, vkEnd, vkPrior, vkNext, vkLeft, vkRight, vkUp, vkDown, vkLWin, vkRWin,
+	case vkInsert, vkDelete, vkHome, vkEnd, vkPrior, vkNext, vkLeft, vkRight, vkUp, vkDown, vkLWin, vkRWin, vkApps, vkPrint, vkNumLock,
 		vkVolumeMute, vkVolumeDown, vkVolumeUp, vkMediaNext, vkMediaPrev, vkMediaPlay:
 		return true
 	default:
