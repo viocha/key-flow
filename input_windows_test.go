@@ -9,8 +9,8 @@ func TestLayerUsesModifier(t *testing.T) {
 		bindings: map[string]Action{
 			"Alt+W": {Type: ActionKeyStroke, Keys: []string{"Ctrl", "Home"}},
 		},
-		mouseShortcuts: map[string]Action{
-			"Shift+wheelUp": {Type: ActionKeyStroke, Keys: []string{"PageUp"}},
+		mouseShortcuts: map[string]compiledMouseShortcut{
+			"Shift+wheelUp": {action: Action{Type: ActionKeyStroke, Keys: []string{"PageUp"}}, wheelSteps: 1},
 		},
 	}
 

@@ -227,6 +227,11 @@ func validateConfig(config AppConfig) error {
 				if !isSupportedMouseShortcutInput(rule.MouseInput) {
 					return fmt.Errorf("通用快捷键使用了不支持的鼠标输入: %s", rule.MouseInput)
 				}
+				if isWheelInput(rule.MouseInput) {
+					if err := validateWheelSteps(rule.WheelSteps); err != nil {
+						return fmt.Errorf("通用快捷键的滚轮灵敏度无效: %w", err)
+					}
+				}
 				modifiers, err := canonicalModifiers(rule.Modifiers)
 				if err != nil {
 					return fmt.Errorf("通用快捷键的修饰键无效: %w", err)
@@ -344,6 +349,9 @@ func validateConfig(config AppConfig) error {
 			if !isSupportedEdgeZone(rule.Zone) {
 				return fmt.Errorf("不支持的屏幕边缘区域: %s", rule.Zone)
 			}
+			if err := validateWheelSteps(rule.WheelSteps); err != nil {
+				return fmt.Errorf("屏幕边缘 %s 的滚轮灵敏度无效: %w", rule.Zone, err)
+			}
 			if rule.Enabled {
 				if _, exists := edgeZones[rule.Zone]; exists {
 					return fmt.Errorf("屏幕边缘区域重复: %s", rule.Zone)
@@ -387,6 +395,11 @@ func validateMouseBindings(trigger string, shortcuts []MouseShortcutBinding, win
 		if !isSupportedMouseShortcutInput(binding.Input) {
 			return fmt.Errorf("不支持的鼠标输入: %s", binding.Input)
 		}
+		if isWheelInput(binding.Input) {
+			if err := validateWheelSteps(binding.WheelSteps); err != nil {
+				return fmt.Errorf("%s的滚轮灵敏度无效: %w", mouseInputLabel(binding.Input), err)
+			}
+		}
 		if binding.Input == triggerInput {
 			return fmt.Errorf("%s 已作为当前触发键", mouseInputLabel(binding.Input))
 		}
@@ -399,7 +412,7 @@ func validateMouseBindings(trigger string, shortcuts []MouseShortcutBinding, win
 			return fmt.Errorf("鼠标快捷键重复: %s 与 %s", previous, label)
 		}
 		used[key] = label
-		if _, exists := usedInputs[binding.Input]; !exists {
+		if binding.Enabled {
 			usedInputs[binding.Input] = label
 		}
 		if err := validateAction(binding.Action, 0); err != nil {
@@ -434,6 +447,9 @@ func validateMouseBindings(trigger string, shortcuts []MouseShortcutBinding, win
 		return errors.New("拖动窗口与调整窗口尺寸不能使用同一个鼠标键")
 	}
 	if window.ScaleWheel {
+		if err := validateWheelSteps(window.WheelSteps); err != nil {
+			return fmt.Errorf("窗口中心缩放的滚轮灵敏度无效: %w", err)
+		}
 		if window.ScaleStepPercent < 1 || window.ScaleStepPercent > 50 {
 			return errors.New("窗口中心缩放步长须为 1–50%")
 		}
@@ -443,6 +459,17 @@ func validateMouseBindings(trigger string, shortcuts []MouseShortcutBinding, win
 		if _, exists := usedInputs["wheelDown"]; exists {
 			return errors.New("窗口中心缩放与滚轮向下快捷键冲突")
 		}
+	}
+	return nil
+}
+
+func isWheelInput(input string) bool {
+	return input == "wheelUp" || input == "wheelDown"
+}
+
+func validateWheelSteps(steps int) error {
+	if steps < 1 || steps > 20 {
+		return errors.New("每次触发所需滚轮格数须为 1–20")
 	}
 	return nil
 }

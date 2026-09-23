@@ -35,7 +35,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { cn } from "cn"
 
 import {
   defaultEdgeWheel,
@@ -337,94 +336,108 @@ export function EdgeWheelDialog({
             </Select>
           </Field>
 
-          <div
-            className={cn(
-              "grid gap-3",
-              noStep
-                ? "grid-cols-1"
-                : "grid-cols-[minmax(0,1fr)_8rem]",
-            )}
-          >
-            <Field>
-              <FieldLabel>调节项</FieldLabel>
-              <Select
-                items={edgeAdjustmentItems}
-                value={draft.adjustment}
-                onValueChange={(value) => {
-                  if (!value) return
-                  const adjustment = value as EdgeAdjustmentType
-                  setDraft({
-                    ...draft,
-                    adjustment,
-                    step:
-                      adjustment ===
-                      EdgeAdjustmentType.EdgeAdjustmentBrightness
-                        ? 5
-                        : 1,
-                    ...(adjustment ===
-                    EdgeAdjustmentType.EdgeAdjustmentBidirectionalKeys
-                      ? {
-                          upKeys:
-                            draft.upKeys?.length
-                              ? draft.upKeys
-                              : ["Ctrl", "Shift", "Tab"],
-                          downKeys:
-                            draft.downKeys?.length
-                              ? draft.downKeys
-                              : ["Ctrl", "Tab"],
-                        }
-                      : {}),
-                  })
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent alignItemWithTrigger={false}>
-                  <SelectGroup>
-                    <SelectItem value={EdgeAdjustmentType.EdgeAdjustmentVolume}>
-                      音量
-                    </SelectItem>
-                    <SelectItem
-                      value={EdgeAdjustmentType.EdgeAdjustmentBrightness}
-                    >
-                      亮度
-                    </SelectItem>
-                    <SelectItem
-                      value={EdgeAdjustmentType.EdgeAdjustmentRecentApps}
-                    >
-                      最近应用
-                    </SelectItem>
-                    <SelectItem
-                      value={
-                        EdgeAdjustmentType.EdgeAdjustmentBidirectionalKeys
+          <Field>
+            <FieldLabel>调节项</FieldLabel>
+            <Select
+              items={edgeAdjustmentItems}
+              value={draft.adjustment}
+              onValueChange={(value) => {
+                if (!value) return
+                const adjustment = value as EdgeAdjustmentType
+                setDraft({
+                  ...draft,
+                  adjustment,
+                  step:
+                    adjustment === EdgeAdjustmentType.EdgeAdjustmentBrightness
+                      ? 5
+                      : 1,
+                  ...(adjustment ===
+                  EdgeAdjustmentType.EdgeAdjustmentBidirectionalKeys
+                    ? {
+                        upKeys: draft.upKeys?.length
+                          ? draft.upKeys
+                          : ["Ctrl", "Shift", "Tab"],
+                        downKeys: draft.downKeys?.length
+                          ? draft.downKeys
+                          : ["Ctrl", "Tab"],
                       }
-                    >
-                      双向快捷键
-                    </SelectItem>
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </Field>
+                    : {}),
+                })
+              }}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent alignItemWithTrigger={false}>
+                <SelectGroup>
+                  <SelectItem value={EdgeAdjustmentType.EdgeAdjustmentVolume}>
+                    音量
+                  </SelectItem>
+                  <SelectItem
+                    value={EdgeAdjustmentType.EdgeAdjustmentBrightness}
+                  >
+                    亮度
+                  </SelectItem>
+                  <SelectItem
+                    value={EdgeAdjustmentType.EdgeAdjustmentRecentApps}
+                  >
+                    最近应用
+                  </SelectItem>
+                  <SelectItem
+                    value={EdgeAdjustmentType.EdgeAdjustmentBidirectionalKeys}
+                  >
+                    双向快捷键
+                  </SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Field>
 
-            {!noStep && (
-              <Field>
-                <FieldLabel htmlFor="edge-step">每格步长</FieldLabel>
+          <Field>
+            <FieldLabel htmlFor="edge-wheel-steps">灵敏度</FieldLabel>
+            <div className="flex items-center text-sm">
+              <div className="flex items-center gap-2 whitespace-nowrap">
+                <span>每</span>
                 <NumberInput
-                  id="edge-step"
+                  id="edge-wheel-steps"
+                  className="w-16"
                   min={1}
-                  max={maxStep}
-                  value={draft.step}
-                  onValueChange={(step) =>
-                    setDraft({
-                      ...draft,
-                      step,
-                    })
+                  max={20}
+                  step={1}
+                  value={draft.wheelSteps}
+                  onValueChange={(wheelSteps) =>
+                    setDraft({ ...draft, wheelSteps: Math.round(wheelSteps) })
                   }
                 />
-              </Field>
-            )}
-          </div>
+                <span>格触发一次</span>
+              </div>
+
+              {!noStep && (
+                <>
+                  <span>，</span>
+                  <div className="flex items-center gap-2 whitespace-nowrap">
+                    <span>每次变化</span>
+                    <NumberInput
+                      className="w-16"
+                      min={1}
+                      max={maxStep}
+                      step={1}
+                      value={draft.step}
+                      onValueChange={(step) =>
+                        setDraft({ ...draft, step: Math.round(step) })
+                      }
+                      aria-label="每次变化量"
+                    />
+                    <span>
+                      {draft.adjustment === EdgeAdjustmentType.EdgeAdjustmentBrightness
+                        ? "%"
+                        : "档"}
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
+          </Field>
 
           {isRecentApps && (
             <Field className="w-full">

@@ -91,6 +91,7 @@ func TestCompileConfigIncludesGesturesAndEdgeWheel(t *testing.T) {
 			Zone:       "bottomRight",
 			Adjustment: EdgeAdjustmentVolume,
 			Step:       1,
+			WheelSteps: 1,
 		},
 	}
 
@@ -117,6 +118,9 @@ func TestCompileConfigIncludesGesturesAndEdgeWheel(t *testing.T) {
 	if edge.marginPX != 7 {
 		t.Fatalf("edge margin = %d, want 7", edge.marginPX)
 	}
+	if edge.wheelSteps != 1 {
+		t.Fatalf("edge wheel steps = %d, want 1", edge.wheelSteps)
+	}
 }
 
 func TestCompileConfigRecentAppsEdge(t *testing.T) {
@@ -128,6 +132,7 @@ func TestCompileConfigRecentAppsEdge(t *testing.T) {
 			Zone:       "right",
 			Adjustment: EdgeAdjustmentRecentApps,
 			Step:       1,
+			WheelSteps: 1,
 		},
 	}
 
@@ -155,6 +160,7 @@ func TestCompileConfigBidirectionalKeysEdge(t *testing.T) {
 			Enabled:    true,
 			Zone:       "left",
 			Adjustment: EdgeAdjustmentBidirectionalKeys,
+			WheelSteps: 1,
 			UpKeys:     []string{"Ctrl", "Shift", "Tab"},
 			DownKeys:   []string{"Ctrl", "Tab"},
 		},

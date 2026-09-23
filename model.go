@@ -39,20 +39,24 @@ type HotkeyRule struct {
 	Enabled    bool     `json:"enabled"`
 	Keys       []string `json:"keys,omitempty"`
 	MouseInput string   `json:"mouseInput,omitempty"`
+	WheelSteps int      `json:"wheelSteps,omitempty"`
 	Modifiers  []string `json:"modifiers,omitempty"`
 	Action     Action   `json:"action"`
 }
 
 type LayerBinding struct {
-	ID     string   `json:"id"`
-	Keys   []string `json:"keys"`
-	Action Action   `json:"action"`
+	ID      string   `json:"id"`
+	Enabled bool     `json:"enabled"`
+	Keys    []string `json:"keys"`
+	Action  Action   `json:"action"`
 }
 
 type MouseShortcutBinding struct {
-	Input     string   `json:"input"`
-	Modifiers []string `json:"modifiers,omitempty"`
-	Action    Action   `json:"action"`
+	Input      string   `json:"input"`
+	Enabled    bool     `json:"enabled"`
+	WheelSteps int      `json:"wheelSteps,omitempty"`
+	Modifiers  []string `json:"modifiers,omitempty"`
+	Action     Action   `json:"action"`
 }
 
 type WindowPointerOperations struct {
@@ -61,6 +65,7 @@ type WindowPointerOperations struct {
 	ResizeButton     string `json:"resizeButton,omitempty"`
 	ScaleWheel       bool   `json:"scaleWheel"`
 	ScaleStepPercent int    `json:"scaleStepPercent"`
+	WheelSteps       int    `json:"wheelSteps"`
 }
 
 type WindowManipulationMode string
@@ -121,6 +126,7 @@ type EdgeWheelRule struct {
 	Zone       string             `json:"zone"`
 	Adjustment EdgeAdjustmentType `json:"adjustment"`
 	Step       int                `json:"step"`
+	WheelSteps int                `json:"wheelSteps"`
 	UpKeys     []string           `json:"upKeys,omitempty"`
 	DownKeys   []string           `json:"downKeys,omitempty"`
 }

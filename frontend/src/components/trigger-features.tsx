@@ -3,16 +3,13 @@ import type {
   ActionPreset,
   MouseShortcutBinding,
 } from "../../bindings/key-flow"
-import {
-  MoreHorizontalIcon,
-  PencilIcon,
-  PlusIcon,
-  Trash2Icon,
-} from "lucide-react"
+import { PlusIcon } from "lucide-react"
 
 import { ActionEditor } from "@/components/action-editor"
-import { EditableListRow, stopListRowClick } from "@/components/editable-list-row"
-import { Button, buttonVariants } from "@/components/ui/button"
+import { EditableListRow } from "@/components/editable-list-row"
+import { RuleContextMenu } from "@/components/rule-context-menu"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import {
   Dialog,
@@ -21,13 +18,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
 import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
@@ -44,6 +34,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { WheelStepsInput } from "@/components/wheel-setting-inputs"
 import {
   actionSummary,
   defaultMouseShortcutAction,
@@ -99,8 +90,15 @@ export function MouseBindingsPanel({
 
   const triggerInput = mouseInputForTrigger(layer.trigger)
   const shortcutInputs = new Set(
-    layer.mouseShortcuts.map((binding) => binding.input),
+    layer.mouseShortcuts.filter((binding) => binding.enabled).map((binding) => binding.input),
   )
+
+  const conflictsWithWindowOperations = (binding: MouseShortcutBinding) =>
+    layer.windowOperations.enabled &&
+    (binding.input === layer.windowOperations.moveButton ||
+      binding.input === layer.windowOperations.resizeButton ||
+      (layer.windowOperations.scaleWheel &&
+        (binding.input === "wheelUp" || binding.input === "wheelDown")))
 
   const availableShortcutInputs = (): MouseInput[] =>
     mouseInputs.filter((input) => {
@@ -153,6 +151,17 @@ export function MouseBindingsPanel({
       const mouseShortcuts = [...current.mouseShortcuts]
       mouseShortcuts.splice(Math.min(index, mouseShortcuts.length), 0, deleted)
       onChange({ ...current, mouseShortcuts })
+    })
+  }
+
+  const toggleShortcut = (key: string) => {
+    onChange({
+      ...layer,
+      mouseShortcuts: layer.mouseShortcuts.map((binding) =>
+        mouseShortcutKey(binding) === key
+          ? { ...binding, enabled: !binding.enabled }
+          : binding,
+      ),
     })
   }
 
@@ -227,6 +236,17 @@ export function MouseBindingsPanel({
               return (
                 <div key={bindingKey}>
                   {index > 0 && <Separator />}
+                  <RuleContextMenu
+                    enabled={binding.enabled}
+                    toggleDisabled={
+                      !binding.enabled && conflictsWithWindowOperations(binding)
+                        ? "与窗口操作冲突"
+                        : undefined
+                    }
+                    onToggle={() => toggleShortcut(bindingKey)}
+                    onEdit={() => setDialog({ open: true, binding, originalKey: bindingKey })}
+                    onDelete={() => deleteShortcut(bindingKey)}
+                  >
                   <EditableListRow
                     onEdit={() =>
                       setDialog({
@@ -242,45 +262,9 @@ export function MouseBindingsPanel({
                     <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
                       {actionSummary(binding.action)}
                     </div>
-                    <div onClick={stopListRowClick} onKeyDown={stopListRowClick}>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger
-                          className={buttonVariants({
-                            variant: "ghost",
-                            size: "icon-sm",
-                            className:
-                              "data-popup-open:bg-accent data-popup-open:text-accent-foreground",
-                          })}
-                          aria-label="更多操作"
-                        >
-                          <MoreHorizontalIcon />
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-32">
-                          <DropdownMenuGroup>
-                            <DropdownMenuItem
-                              onClick={() =>
-                                setDialog({
-                                  open: true,
-                                  binding,
-                                  originalKey: bindingKey,
-                                })
-                              }
-                            >
-                              <PencilIcon />
-                              编辑
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              variant="destructive"
-                              onClick={() => deleteShortcut(bindingKey)}
-                            >
-                              <Trash2Icon />
-                              删除
-                            </DropdownMenuItem>
-                          </DropdownMenuGroup>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
+                    {!binding.enabled && <Badge variant="secondary" className="ml-auto shrink-0">已禁用</Badge>}
                   </EditableListRow>
+                  </RuleContextMenu>
                 </div>
               )
             })
@@ -302,7 +286,7 @@ export function MouseBindingsPanel({
       <Card className="gap-0 py-0">
         <CardContent className="px-0">
           <div className="grid grid-cols-[8rem_minmax(0,1fr)] items-center gap-3 px-3 py-2">
-            <div className="text-sm">拖动窗口</div>
+            <div className="text-sm font-medium">拖动窗口</div>
             <Select
               items={windowButtonItems(
                 layer.windowOperations.moveButton,
@@ -343,7 +327,7 @@ export function MouseBindingsPanel({
           <Separator />
 
           <div className="grid grid-cols-[8rem_minmax(0,1fr)] items-center gap-3 px-3 py-2">
-            <div className="text-sm">调整窗口尺寸</div>
+            <div className="text-sm font-medium">调整窗口尺寸</div>
             <Select
               items={windowButtonItems(
                 layer.windowOperations.resizeButton,
@@ -383,8 +367,57 @@ export function MouseBindingsPanel({
 
           <Separator />
 
-          <div className="flex items-center gap-3 px-3 py-2">
-            <div className="w-32 shrink-0 text-sm">窗口中心缩放</div>
+          <div className="grid grid-cols-[8rem_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2">
+            <div className="text-sm font-medium">窗口中心缩放</div>
+            <div className="flex min-w-0 items-center text-sm">
+              {layer.windowOperations.scaleWheel && (
+                <>
+                  <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
+                    <span>每</span>
+                    <NumberInput
+                      className="w-16"
+                      min={1}
+                      max={20}
+                      step={1}
+                      value={layer.windowOperations.wheelSteps}
+                      onValueChange={(wheelSteps) =>
+                        onChange({
+                          ...layer,
+                          windowOperations: {
+                            ...layer.windowOperations,
+                            wheelSteps: Math.round(wheelSteps),
+                          },
+                        })
+                      }
+                      aria-label="缩放触发格数"
+                    />
+                    <span>格触发一次</span>
+                  </div>
+                  <span>，</span>
+                  <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
+                    <span>每次变化</span>
+                    <NumberInput
+                      className="w-16"
+                      min={1}
+                      max={50}
+                      step={1}
+                      value={layer.windowOperations.scaleStepPercent}
+                      onValueChange={(scaleStepPercent) =>
+                        onChange({
+                          ...layer,
+                          windowOperations: {
+                            ...layer.windowOperations,
+                            scaleStepPercent: Math.round(scaleStepPercent),
+                          },
+                        })
+                      }
+                      aria-label="每次缩放百分比"
+                    />
+                    <span>%</span>
+                  </div>
+                </>
+              )}
+            </div>
             <Switch
               size="sm"
               checked={layer.windowOperations.scaleWheel}
@@ -400,27 +433,6 @@ export function MouseBindingsPanel({
               }
               aria-label="启用滚轮中心缩放"
             />
-            {layer.windowOperations.scaleWheel && (
-              <div className="ml-auto flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">每格</span>
-                <NumberInput
-                  className="w-20"
-                  min={1}
-                  max={50}
-                  value={layer.windowOperations.scaleStepPercent}
-                  onValueChange={(scaleStepPercent) =>
-                    onChange({
-                      ...layer,
-                      windowOperations: {
-                        ...layer.windowOperations,
-                        scaleStepPercent,
-                      },
-                    })
-                  }
-                />
-                <span className="text-xs text-muted-foreground">%</span>
-              </div>
-            )}
           </div>
         </CardContent>
       </Card>
@@ -431,7 +443,9 @@ export function MouseBindingsPanel({
         binding={dialog.open ? dialog.binding : undefined}
         availableInputs={
           dialog.open
-            ? availableShortcutInputs()
+            ? mouseInputs.filter((input) =>
+                input === dialog.binding?.input || availableShortcutInputs().includes(input),
+              )
             : []
         }
         existingKeys={new Set(layer.mouseShortcuts.map(mouseShortcutKey))}
@@ -477,6 +491,8 @@ function MouseShortcutDialog({
   )
   const [draft, setDraft] = useState<MouseShortcutBinding>({
     input: "left",
+    enabled: true,
+    wheelSteps: 1,
     modifiers: [],
     action: defaultMouseShortcutAction(),
   })
@@ -489,6 +505,8 @@ function MouseShortcutDialog({
     }
     setDraft({
       input: availableInputs[0] ?? "left",
+      enabled: true,
+      wheelSteps: 1,
       modifiers: [],
       action: defaultMouseShortcutAction(),
     })
@@ -513,9 +531,16 @@ function MouseShortcutDialog({
               <Select
                 items={inputItems}
                 value={draft.input}
-                onValueChange={(input) =>
-                  input && setDraft({ ...draft, input })
-                }
+                onValueChange={(input) => {
+                  if (!input) return
+                  setDraft({
+                    ...draft,
+                    input,
+                    wheelSteps: input.startsWith("wheel")
+                      ? draft.wheelSteps ?? 1
+                      : undefined,
+                  })
+                }}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue />
@@ -531,6 +556,15 @@ function MouseShortcutDialog({
                 </SelectContent>
               </Select>
             </Field>
+
+            {(draft.input === "wheelUp" || draft.input === "wheelDown") && (
+              <WheelStepsInput
+                value={draft.wheelSteps!}
+                onValueChange={(wheelSteps) =>
+                  setDraft({ ...draft, wheelSteps })
+                }
+              />
+            )}
 
             <Field>
               <FieldLabel>修饰键</FieldLabel>

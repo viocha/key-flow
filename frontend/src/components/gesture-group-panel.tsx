@@ -6,15 +6,16 @@ import type {
 } from "../../bindings/key-flow"
 import {
   MoreHorizontalIcon,
-  PencilIcon,
   PlusIcon,
   Trash2Icon,
 } from "lucide-react"
 
-import { EditableListRow, stopListRowClick } from "@/components/editable-list-row"
+import { EditableListRow } from "@/components/editable-list-row"
 import { GestureEndpointArrow } from "@/components/gesture-endpoint-arrow"
 import { GestureDialog } from "@/components/feature-dialogs"
 import { PanelLayout } from "@/components/panel-layout"
+import { RuleContextMenu } from "@/components/rule-context-menu"
+import { Badge } from "@/components/ui/badge"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import {
@@ -203,64 +204,36 @@ export function GestureGroupPanel({
               return (
                 <div key={binding.id}>
                   {index > 0 && <Separator />}
+                  <RuleContextMenu
+                    enabled={binding.enabled}
+                    onToggle={() => saveBinding({ ...binding, enabled: !binding.enabled })}
+                    onEdit={() => setDialog({ open: true, binding })}
+                    onDelete={() => deleteBinding(binding, index)}
+                  >
                   <EditableListRow
                     onEdit={() => setDialog({ open: true, binding })}
                   >
-                    <div onClick={stopListRowClick} onKeyDown={stopListRowClick}>
-                      <Switch
-                        size="sm"
-                        checked={binding.enabled}
-                        onCheckedChange={(enabled) =>
-                          saveBinding({ ...binding, enabled })
-                        }
-                        aria-label={"启用 " + label}
-                      />
-                    </div>
                     <GesturePathPreview
                       preview={binding.preview!}
                       directions={binding.directions}
                     />
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium">{label}</div>
+                      <div className="flex min-w-0 items-center gap-2">
+                        <div className="min-w-0 truncate text-sm font-medium">
+                          {label}
+                        </div>
+                      </div>
                       {customName && (
                         <div className="truncate text-xs text-muted-foreground">
                           {actionSummary(binding.action)}
                         </div>
                       )}
                     </div>
-                    <div onClick={stopListRowClick} onKeyDown={stopListRowClick}>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger
-                          className={buttonVariants({
-                            variant: "ghost",
-                            size: "icon-sm",
-                            className:
-                              "data-popup-open:bg-accent data-popup-open:text-accent-foreground",
-                          })}
-                          aria-label="更多操作"
-                        >
-                          <MoreHorizontalIcon />
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-32">
-                          <DropdownMenuGroup>
-                            <DropdownMenuItem
-                              onClick={() => setDialog({ open: true, binding })}
-                            >
-                              <PencilIcon />
-                              编辑
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              variant="destructive"
-                              onClick={() => deleteBinding(binding, index)}
-                            >
-                              <Trash2Icon />
-                              删除
-                            </DropdownMenuItem>
-                          </DropdownMenuGroup>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
+                    {!binding.enabled && (
+                      <Badge variant="secondary" className="ml-auto shrink-0">已禁用</Badge>
+                    )}
                   </EditableListRow>
+                  </RuleContextMenu>
                 </div>
               )
             })

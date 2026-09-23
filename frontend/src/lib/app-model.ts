@@ -72,6 +72,7 @@ export function normalizeConfig(config: AppConfig): UiConfig {
           resizeButton: layer.windowOperations?.resizeButton ?? "",
           scaleWheel: layer.windowOperations?.scaleWheel ?? false,
           scaleStepPercent: layer.windowOperations?.scaleStepPercent || 5,
+          wheelSteps: layer.windowOperations.wheelSteps,
         },
       })),
     })),
@@ -349,6 +350,7 @@ export function defaultLayer(holdMs: number): UiLayer {
       resizeButton: "",
       scaleWheel: false,
       scaleStepPercent: 5,
+      wheelSteps: 1,
     },
   }
 }
@@ -356,6 +358,7 @@ export function defaultLayer(holdMs: number): UiLayer {
 export function defaultBinding(): LayerBinding {
   return {
     id: newID("binding"),
+    enabled: true,
     keys: ["S"],
     action: {
       type: ActionType.ActionKeyStroke,
@@ -395,6 +398,7 @@ export function defaultEdgeWheel(): EdgeWheelRule {
     zone: "bottomRight",
     adjustment: EdgeAdjustmentType.EdgeAdjustmentVolume,
     step: 1,
+    wheelSteps: 1,
     upKeys: [],
     downKeys: [],
   }

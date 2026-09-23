@@ -155,10 +155,10 @@ func (s *windowsInputState) handleMouse(message uint32, data *msLLHookStruct) bo
 			}
 
 			shortcutKey := s.currentMouseShortcutKeyLocked(button)
-			if action, ok := trigger.layer.mouseShortcuts[shortcutKey]; ok {
+			if shortcut, ok := trigger.layer.mouseShortcuts[shortcutKey]; ok {
 				trigger.used = true
 				s.engine.enqueueActionContext(
-					action,
+					shortcut.action,
 					captureActionContext(
 						targetWindowAtPoint(pt),
 						pt,
@@ -189,33 +189,35 @@ func (s *windowsInputState) handleMouse(message uint32, data *msLLHookStruct) bo
 				}
 				cursorWindow := s.cursorWindow
 				stepPercent := trigger.layer.windowOperations.ScaleStepPercent
-				s.enqueuePointerTask(func() {
-					setCursorFeedback(cursorWindow, idcSizeAll, pt)
-					if err := scaleWindow(target, sign, stepPercent); err != nil {
-						s.engine.setError(err)
-					}
-				})
-				trigger.cursorChanged = true
+				count := s.wheel.consume("scale:"+trigger.name+":"+inputForWheelSign(sign), wheelDelta(mouseData), trigger.layer.windowOperations.WheelSteps)
+				if count > 0 {
+					s.enqueuePointerTask(func() {
+						setCursorFeedback(cursorWindow, idcSizeAll, pt)
+						for range count {
+							if err := scaleWindow(target, sign, stepPercent); err != nil {
+								s.engine.setError(err)
+							}
+						}
+					})
+					trigger.cursorChanged = true
+				}
 				return true
 			}
 
-			input := "wheelDown"
-			if sign > 0 {
-				input = "wheelUp"
-			}
+			input := inputForWheelSign(sign)
 			shortcutKey := s.currentMouseShortcutKeyLocked(input)
-			if action, ok := trigger.layer.mouseShortcuts[shortcutKey]; ok {
+			if shortcut, ok := trigger.layer.mouseShortcuts[shortcutKey]; ok {
 				trigger.used = true
-				s.engine.enqueueActionContext(
-					action,
-					captureActionContext(
-						targetWindowAtPoint(pt),
-						pt,
-						s.suppressedModifierNamesLocked()...,
-					),
-				)
+				count := s.wheel.consume("layer:"+trigger.name+":"+shortcutKey, wheelDelta(mouseData), shortcut.wheelSteps)
+				if count > 0 {
+					context := captureActionContext(targetWindowAtPoint(pt), pt, s.suppressedModifierNamesLocked()...)
+					for range count {
+						s.engine.enqueueActionContext(shortcut.action, context)
+					}
+				}
 				return true
 			}
+			s.wheel.reset()
 			return false
 		}
 	}
@@ -227,9 +229,9 @@ func (s *windowsInputState) handleMouse(message uint32, data *msLLHookStruct) bo
 
 	if button, isDown, _ := mouseButtonEvent(message, mouseData); isDown {
 		shortcutKey := s.currentMouseShortcutKeyLocked(button)
-		if action, ok := config.mouseHotkeys[shortcutKey]; ok {
+		if shortcut, ok := config.mouseHotkeys[shortcutKey]; ok {
 			s.engine.enqueueActionContext(
-				action,
+				shortcut.action,
 				captureActionContext(targetWindowAtPoint(pt), pt),
 			)
 			s.pointerCapture = &pointerCapture{button: button, swallow: true}
@@ -239,31 +241,37 @@ func (s *windowsInputState) handleMouse(message uint32, data *msLLHookStruct) bo
 
 	if message == wmMouseWheel {
 		sign := wheelDeltaSign(mouseData)
-		input := "wheelDown"
-		if sign > 0 {
-			input = "wheelUp"
-		}
+		input := inputForWheelSign(sign)
 		shortcutKey := s.currentMouseShortcutKeyLocked(input)
-		if action, ok := config.mouseHotkeys[shortcutKey]; ok {
-			s.engine.enqueueActionContext(
-				action,
-				captureActionContext(targetWindowAtPoint(pt), pt),
-			)
+		if shortcut, ok := config.mouseHotkeys[shortcutKey]; ok {
+			count := s.wheel.consume("global:"+shortcutKey, wheelDelta(mouseData), shortcut.wheelSteps)
+			if count > 0 {
+				context := captureActionContext(targetWindowAtPoint(pt), pt)
+				for range count {
+					s.engine.enqueueActionContext(shortcut.action, context)
+				}
+			}
 			return true
 		}
 		for zone, rule := range config.edgeWheels {
 			if !pointInEdgeZone(pt, zone, rule.marginPX) {
 				continue
 			}
-			context := captureActionContext(targetWindowAtPoint(pt), pt)
-			if sign > 0 {
-				s.engine.enqueueActionContext(rule.up, context)
-			} else {
-				s.engine.enqueueActionContext(rule.down, context)
+			count := s.wheel.consume("edge:"+zone+":"+input, wheelDelta(mouseData), rule.wheelSteps)
+			if count > 0 {
+				context := captureActionContext(targetWindowAtPoint(pt), pt)
+				for range count {
+					if sign > 0 {
+						s.engine.enqueueActionContext(rule.up, context)
+					} else {
+						s.engine.enqueueActionContext(rule.down, context)
+					}
+				}
+				s.edgeSwitcherActive = rule.recentApps
 			}
-			s.edgeSwitcherActive = rule.recentApps
 			return true
 		}
+		s.wheel.reset()
 		return false
 	}
 
@@ -456,6 +464,17 @@ func wheelDeltaSign(mouseData uint32) int {
 		return 1
 	}
 	return -1
+}
+
+func wheelDelta(mouseData uint32) int {
+	return int(int16(mouseData >> 16))
+}
+
+func inputForWheelSign(sign int) string {
+	if sign > 0 {
+		return "wheelUp"
+	}
+	return "wheelDown"
 }
 
 func (s *windowsInputState) updateGestureLocked(gesture *activeGesture, pt point) {

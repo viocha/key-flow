@@ -31,7 +31,3 @@ export function EditableListRow({
     </div>
   )
 }
-
-export function stopListRowClick(event: { stopPropagation: () => void }) {
-  event.stopPropagation()
-}

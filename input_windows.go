@@ -221,6 +221,7 @@ type windowsInputState struct {
 	gesture             *activeGesture
 	pointerCapture      *pointerCapture
 	edgeSwitcherActive  bool
+	wheel               wheelGate
 	cursorWindow        windows.Handle
 	pointerMoves        chan pointerMoveRequest
 	pointerTasks        chan func()
@@ -556,6 +557,7 @@ func (s *windowsInputState) finishTriggerLocked() {
 		})
 	}
 	s.trigger = nil
+	s.wheel.reset()
 
 	if !trigger.entered && !trigger.used && trigger.layer.tapBehavior == "original" {
 		name := trigger.name

@@ -24,12 +24,18 @@ type compiledLayer struct {
 	hold             time.Duration
 	tapBehavior      string
 	bindings         map[string]Action
-	mouseShortcuts   map[string]Action
+	mouseShortcuts   map[string]compiledMouseShortcut
 	windowOperations WindowPointerOperations
+}
+
+type compiledMouseShortcut struct {
+	action     Action
+	wheelSteps int
 }
 
 type compiledEdgeWheel struct {
 	marginPX   int
+	wheelSteps int
 	recentApps bool
 	up         Action
 	down       Action
@@ -40,7 +46,7 @@ type compiledConfig struct {
 	keyInterval    time.Duration
 	gestureTimeout time.Duration
 	hotkeys        map[string]Action
-	mouseHotkeys   map[string]Action
+	mouseHotkeys   map[string]compiledMouseShortcut
 	layers         map[string]compiledLayer
 	gestures       map[string]compiledGestures
 	edgeWheels     map[string]compiledEdgeWheel
@@ -181,7 +187,7 @@ func (e *InputEngine) snapshot() compiledConfig {
 		keyInterval:    e.compiled.keyInterval,
 		gestureTimeout: e.compiled.gestureTimeout,
 		hotkeys:        make(map[string]Action, len(e.compiled.hotkeys)),
-		mouseHotkeys:   make(map[string]Action, len(e.compiled.mouseHotkeys)),
+		mouseHotkeys:   make(map[string]compiledMouseShortcut, len(e.compiled.mouseHotkeys)),
 		layers:         make(map[string]compiledLayer, len(e.compiled.layers)),
 		gestures:       make(map[string]compiledGestures, len(e.compiled.gestures)),
 		edgeWheels:     make(map[string]compiledEdgeWheel, len(e.compiled.edgeWheels)),
@@ -197,7 +203,7 @@ func (e *InputEngine) snapshot() compiledConfig {
 		for chord, action := range layer.bindings {
 			bindings[chord] = action
 		}
-		mouseShortcuts := make(map[string]Action, len(layer.mouseShortcuts))
+		mouseShortcuts := make(map[string]compiledMouseShortcut, len(layer.mouseShortcuts))
 		for input, action := range layer.mouseShortcuts {
 			mouseShortcuts[input] = action
 		}
@@ -310,7 +316,7 @@ func compileConfig(config AppConfig) (compiledConfig, error) {
 		keyInterval:    time.Duration(config.Settings.DefaultKeyIntervalMS) * time.Millisecond,
 		gestureTimeout: time.Duration(config.Settings.GestureTimeoutMS) * time.Millisecond,
 		hotkeys:        map[string]Action{},
-		mouseHotkeys:   map[string]Action{},
+		mouseHotkeys:   map[string]compiledMouseShortcut{},
 		layers:         map[string]compiledLayer{},
 		gestures:       map[string]compiledGestures{},
 		edgeWheels:     map[string]compiledEdgeWheel{},
@@ -336,7 +342,7 @@ func compileConfig(config AppConfig) (compiledConfig, error) {
 				if err != nil {
 					return compiledConfig{}, err
 				}
-				compiled.mouseHotkeys[key] = rule.Action
+				compiled.mouseHotkeys[key] = compiledMouseShortcut{action: rule.Action, wheelSteps: rule.WheelSteps}
 				continue
 			}
 			chord, err := canonicalChord(rule.Keys)
@@ -353,6 +359,9 @@ func compileConfig(config AppConfig) (compiledConfig, error) {
 		}
 		bindings := make(map[string]Action, len(layer.Bindings))
 		for _, binding := range layer.Bindings {
+			if !binding.Enabled {
+				continue
+			}
 			chord, err := canonicalChord(binding.Keys)
 			if err != nil {
 				return compiledConfig{}, err
@@ -360,13 +369,16 @@ func compileConfig(config AppConfig) (compiledConfig, error) {
 			bindings[chord] = binding.Action
 		}
 
-		mouseShortcuts := make(map[string]Action, len(layer.MouseShortcuts))
+		mouseShortcuts := make(map[string]compiledMouseShortcut, len(layer.MouseShortcuts))
 		for _, binding := range layer.MouseShortcuts {
+			if !binding.Enabled {
+				continue
+			}
 			key, err := mouseShortcutKey(binding.Modifiers, binding.Input)
 			if err != nil {
 				return compiledConfig{}, err
 			}
-			mouseShortcuts[key] = binding.Action
+			mouseShortcuts[key] = compiledMouseShortcut{action: binding.Action, wheelSteps: binding.WheelSteps}
 		}
 
 		compiled.layers[layer.Trigger] = compiledLayer{
@@ -410,6 +422,7 @@ func compileConfig(config AppConfig) (compiledConfig, error) {
 			if rule.Adjustment == EdgeAdjustmentRecentApps {
 				compiled.edgeWheels[rule.Zone] = compiledEdgeWheel{
 					marginPX:   profile.EdgeWheelMarginPX,
+					wheelSteps: rule.WheelSteps,
 					recentApps: true,
 					up: Action{
 						Type: ActionKeyStroke,
@@ -425,7 +438,8 @@ func compileConfig(config AppConfig) (compiledConfig, error) {
 
 			if rule.Adjustment == EdgeAdjustmentBidirectionalKeys {
 				compiled.edgeWheels[rule.Zone] = compiledEdgeWheel{
-					marginPX: profile.EdgeWheelMarginPX,
+					marginPX:   profile.EdgeWheelMarginPX,
+					wheelSteps: rule.WheelSteps,
 					up: Action{
 						Type: ActionKeyStroke,
 						Keys: append([]string(nil), rule.UpKeys...),
@@ -443,9 +457,10 @@ func compileConfig(config AppConfig) (compiledConfig, error) {
 				actionType = ActionBrightness
 			}
 			compiled.edgeWheels[rule.Zone] = compiledEdgeWheel{
-				marginPX: profile.EdgeWheelMarginPX,
-				up:       Action{Type: actionType, Delta: rule.Step},
-				down:     Action{Type: actionType, Delta: -rule.Step},
+				marginPX:   profile.EdgeWheelMarginPX,
+				wheelSteps: rule.WheelSteps,
+				up:         Action{Type: actionType, Delta: rule.Step},
+				down:       Action{Type: actionType, Delta: -rule.Step},
 			}
 		}
 	}

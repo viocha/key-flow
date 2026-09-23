@@ -25,9 +25,10 @@ func testLayer(id, name, trigger string, enabled bool) TriggerLayer {
 		TapBehavior: "original",
 		Bindings: []LayerBinding{
 			{
-				ID:     id + "-h",
-				Keys:   []string{"H"},
-				Action: Action{Type: ActionKeyStroke, Keys: []string{"ArrowLeft"}},
+				ID:      id + "-h",
+				Enabled: true,
+				Keys:    []string{"H"},
+				Action:  Action{Type: ActionKeyStroke, Keys: []string{"ArrowLeft"}},
 			},
 		},
 	}
@@ -113,6 +114,7 @@ func TestCompileConfigSupportsGlobalMouseHotkey(t *testing.T) {
 		ID:         "alt-wheel-up",
 		Enabled:    true,
 		MouseInput: "wheelUp",
+		WheelSteps: 1,
 		Modifiers:  []string{"Alt"},
 		Action:     Action{Type: ActionKeyStroke, Keys: []string{"Ctrl", "Tab"}},
 	}}
@@ -127,6 +129,9 @@ func TestCompileConfigSupportsGlobalMouseHotkey(t *testing.T) {
 	if _, ok := compiled.mouseHotkeys["Alt+wheelUp"]; !ok {
 		t.Fatal("global mouse hotkey was not compiled")
 	}
+	if got := compiled.mouseHotkeys["Alt+wheelUp"].wheelSteps; got != 1 {
+		t.Fatalf("global wheel steps = %d, want 1", got)
+	}
 }
 
 func TestValidateConfigRejectsGlobalMouseHotkeyWithoutModifier(t *testing.T) {
@@ -135,6 +140,7 @@ func TestValidateConfigRejectsGlobalMouseHotkeyWithoutModifier(t *testing.T) {
 		ID:         "wheel-up",
 		Enabled:    true,
 		MouseInput: "wheelUp",
+		WheelSteps: 1,
 		Action:     Action{Type: ActionKeyStroke, Keys: []string{"Ctrl", "Tab"}},
 	}}
 
@@ -198,9 +204,10 @@ func TestValidateConfigRejectsDuplicateLayerBinding(t *testing.T) {
 	config := defaultConfig()
 	layer := testLayer("caps", "CapsLock", "CapsLock", true)
 	layer.Bindings = append(layer.Bindings, LayerBinding{
-		ID:     "duplicate-h",
-		Keys:   []string{"H"},
-		Action: Action{Type: ActionKeyStroke, Keys: []string{"Home"}},
+		ID:      "duplicate-h",
+		Enabled: true,
+		Keys:    []string{"H"},
+		Action:  Action{Type: ActionKeyStroke, Keys: []string{"Home"}},
 	})
 	config.Profiles[0].Layers = []TriggerLayer{layer}
 
@@ -228,7 +235,8 @@ func TestCompileConfigSeparatesMouseShortcutsAndWindowOperations(t *testing.T) {
 	layer := testLayer("caps", "CapsLock", "CapsLock", true)
 	layer.MouseShortcuts = []MouseShortcutBinding{
 		{
-			Input: "middle",
+			Input:   "middle",
+			Enabled: true,
 			Action: Action{
 				Type:          ActionWindow,
 				WindowCommand: "toggleMaximize",
@@ -236,6 +244,7 @@ func TestCompileConfigSeparatesMouseShortcutsAndWindowOperations(t *testing.T) {
 		},
 		{
 			Input:     "middle",
+			Enabled:   true,
 			Modifiers: []string{"Shift"},
 			Action: Action{
 				Type: ActionKeyStroke,
@@ -243,7 +252,9 @@ func TestCompileConfigSeparatesMouseShortcutsAndWindowOperations(t *testing.T) {
 			},
 		},
 		{
-			Input: "wheelUp",
+			Input:      "wheelUp",
+			Enabled:    true,
+			WheelSteps: 1,
 			Action: Action{
 				Type: ActionKeyStroke,
 				Keys: []string{"Ctrl", "Tab"},
@@ -270,14 +281,17 @@ func TestCompileConfigSeparatesMouseShortcutsAndWindowOperations(t *testing.T) {
 	if !ok {
 		t.Fatal("CapsLock layer was not compiled")
 	}
-	if action := got.mouseShortcuts["middle"]; action.Type != ActionWindow || action.WindowCommand != "toggleMaximize" {
+	if action := got.mouseShortcuts["middle"].action; action.Type != ActionWindow || action.WindowCommand != "toggleMaximize" {
 		t.Fatalf("middle shortcut = %#v", action)
 	}
-	if action := got.mouseShortcuts["Shift+middle"]; action.Type != ActionKeyStroke {
+	if action := got.mouseShortcuts["Shift+middle"].action; action.Type != ActionKeyStroke {
 		t.Fatalf("shift+middle shortcut = %#v", action)
 	}
-	if action := got.mouseShortcuts["wheelUp"]; action.Type != ActionKeyStroke {
+	if action := got.mouseShortcuts["wheelUp"].action; action.Type != ActionKeyStroke {
 		t.Fatalf("wheel-up shortcut = %#v", action)
+	}
+	if got.mouseShortcuts["wheelUp"].wheelSteps != 1 {
+		t.Fatal("layer wheel sensitivity was not compiled")
 	}
 	if got.windowOperations.MoveButton != "left" || got.windowOperations.ResizeButton != "right" {
 		t.Fatalf("window operations = %#v", got.windowOperations)
@@ -290,11 +304,13 @@ func TestValidateConfigRejectsDuplicateMouseShortcutCombination(t *testing.T) {
 	layer.MouseShortcuts = []MouseShortcutBinding{
 		{
 			Input:     "left",
+			Enabled:   true,
 			Modifiers: []string{"Alt", "Shift"},
 			Action:    Action{Type: ActionKeyStroke, Keys: []string{"Ctrl", "Tab"}},
 		},
 		{
 			Input:     "left",
+			Enabled:   true,
 			Modifiers: []string{"Shift", "Alt"},
 			Action:    Action{Type: ActionKeyStroke, Keys: []string{"Ctrl", "W"}},
 		},
@@ -320,8 +336,9 @@ func TestValidateConfigRejectsMouseShortcutWindowOperationConflict(t *testing.T)
 	layer := testLayer("caps", "CapsLock", "CapsLock", true)
 	layer.MouseShortcuts = []MouseShortcutBinding{
 		{
-			Input:  "left",
-			Action: Action{Type: ActionKeyStroke, Keys: []string{"Ctrl", "Tab"}},
+			Input:   "left",
+			Enabled: true,
+			Action:  Action{Type: ActionKeyStroke, Keys: []string{"Ctrl", "Tab"}},
 		},
 	}
 	layer.WindowOperations = WindowPointerOperations{
@@ -334,5 +351,33 @@ func TestValidateConfigRejectsMouseShortcutWindowOperationConflict(t *testing.T)
 	err := validateConfig(config)
 	if err == nil || !strings.Contains(err.Error(), "冲突") {
 		t.Fatalf("expected mouse/window conflict, got %v", err)
+	}
+}
+
+func TestDisabledLayerBindingsDoNotCompileOrReserveWindowInput(t *testing.T) {
+	config := defaultConfig()
+	layer := testLayer("caps", "CapsLock", "CapsLock", true)
+	layer.Bindings[0].Enabled = false
+	layer.MouseShortcuts = []MouseShortcutBinding{{
+		Input:  "left",
+		Action: Action{Type: ActionKeyStroke, Keys: []string{"Ctrl", "Tab"}},
+	}}
+	layer.WindowOperations = WindowPointerOperations{
+		Enabled:          true,
+		MoveButton:       "left",
+		ScaleStepPercent: 5,
+	}
+	config.Profiles[0].Layers = []TriggerLayer{layer}
+
+	compiled, err := compileConfig(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := compiled.layers["CapsLock"]
+	if len(got.bindings) != 0 || len(got.mouseShortcuts) != 0 {
+		t.Fatalf("disabled bindings compiled: %#v", got)
+	}
+	if got.windowOperations.MoveButton != "left" {
+		t.Fatal("disabled mouse shortcut should not reserve window input")
 	}
 }

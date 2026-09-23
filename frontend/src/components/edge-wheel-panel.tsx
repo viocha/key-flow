@@ -4,17 +4,16 @@ import {
   type EdgeWheelRule,
 } from "../../bindings/key-flow"
 import {
-  MoreHorizontalIcon,
-  PencilIcon,
   PlusIcon,
-  Trash2Icon,
 } from "lucide-react"
 
-import { EditableListRow, stopListRowClick } from "@/components/editable-list-row"
+import { EditableListRow } from "@/components/editable-list-row"
 import { EdgeWheelDialog } from "@/components/feature-dialogs"
 import { KeyChord } from "@/components/key-chord"
 import { PanelLayout } from "@/components/panel-layout"
-import { Button, buttonVariants } from "@/components/ui/button"
+import { RuleContextMenu } from "@/components/rule-context-menu"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import {
   Dialog,
@@ -23,13 +22,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
 import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
@@ -137,70 +129,38 @@ export function EdgeWheelPanel({
             rules.map((rule, index) => (
               <div key={rule.id}>
                 {index > 0 && <Separator />}
+                <RuleContextMenu
+                  enabled={rule.enabled}
+                  onToggle={() => saveRule({ ...rule, enabled: !rule.enabled })}
+                  onEdit={() => setDialog({ open: true, rule })}
+                  onDelete={() => deleteRule(rule, index)}
+                >
                 <EditableListRow onEdit={() => setDialog({ open: true, rule })}>
-                  <div onClick={stopListRowClick} onKeyDown={stopListRowClick}>
-                    <Switch
-                      size="sm"
-                      checked={rule.enabled}
-                      onCheckedChange={(enabled) =>
-                        saveRule({ ...rule, enabled })
-                      }
-                      aria-label={"启用 " + edgeZoneLabel(rule.zone)}
-                    />
-                  </div>
                   <div className="w-24 shrink-0 text-sm font-medium">
                     {edgeZoneLabel(rule.zone)}
                   </div>
-                  <div className="min-w-0 flex-1 text-sm">
-                    {rule.adjustment ===
-                    EdgeAdjustmentType.EdgeAdjustmentBidirectionalKeys ? (
-                      <div className="flex min-w-0 items-center gap-4">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <span className="shrink-0 text-muted-foreground">↑</span>
-                          <KeyChord keys={rule.upKeys} />
+                  <div className="flex min-w-0 flex-1 items-center gap-2 text-sm">
+                    <div className="min-w-0 flex-1">
+                      {rule.adjustment ===
+                      EdgeAdjustmentType.EdgeAdjustmentBidirectionalKeys ? (
+                        <div className="flex min-w-0 items-center gap-4">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className="shrink-0 text-muted-foreground">↑</span>
+                            <KeyChord keys={rule.upKeys} />
+                          </div>
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className="shrink-0 text-muted-foreground">↓</span>
+                            <KeyChord keys={rule.downKeys} />
+                          </div>
                         </div>
-                        <div className="flex min-w-0 items-center gap-2">
-                          <span className="shrink-0 text-muted-foreground">↓</span>
-                          <KeyChord keys={rule.downKeys} />
-                        </div>
-                      </div>
-                    ) : (
-                      edgeAdjustmentLabel(rule.adjustment)
-                    )}
+                      ) : (
+                        edgeAdjustmentLabel(rule.adjustment)
+                      )}
+                    </div>
                   </div>
-                  <div onClick={stopListRowClick} onKeyDown={stopListRowClick}>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      className={buttonVariants({
-                        variant: "ghost",
-                        size: "icon-sm",
-                        className:
-                          "data-popup-open:bg-accent data-popup-open:text-accent-foreground",
-                      })}
-                      aria-label="更多操作"
-                    >
-                      <MoreHorizontalIcon />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-32">
-                      <DropdownMenuGroup>
-                        <DropdownMenuItem
-                          onClick={() => setDialog({ open: true, rule })}
-                        >
-                          <PencilIcon />
-                          编辑
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onClick={() => deleteRule(rule, index)}
-                        >
-                          <Trash2Icon />
-                          删除
-                        </DropdownMenuItem>
-                      </DropdownMenuGroup>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                  </div>
+                  {!rule.enabled && <Badge variant="secondary" className="ml-auto shrink-0">已禁用</Badge>}
                 </EditableListRow>
+                </RuleContextMenu>
               </div>
             ))
           )}

@@ -71,6 +71,7 @@ export interface EdgeWheelRule {
     "zone": string;
     "adjustment": EdgeAdjustmentType;
     "step": number;
+    "wheelSteps": number;
     "upKeys"?: string[] | null;
     "downKeys"?: string[] | null;
 }
@@ -111,18 +112,22 @@ export interface HotkeyRule {
     "enabled": boolean;
     "keys"?: string[] | null;
     "mouseInput"?: string;
+    "wheelSteps"?: number;
     "modifiers"?: string[] | null;
     "action": Action;
 }
 
 export interface LayerBinding {
     "id": string;
+    "enabled": boolean;
     "keys": string[] | null;
     "action": Action;
 }
 
 export interface MouseShortcutBinding {
     "input": string;
+    "enabled": boolean;
+    "wheelSteps"?: number;
     "modifiers"?: string[] | null;
     "action": Action;
 }
@@ -163,4 +168,5 @@ export interface WindowPointerOperations {
     "resizeButton"?: string;
     "scaleWheel": boolean;
     "scaleStepPercent": number;
+    "wheelSteps": number;
 }

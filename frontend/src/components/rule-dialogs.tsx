@@ -34,6 +34,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { WheelStepsInput } from "@/components/wheel-setting-inputs"
 import {
   defaultBinding,
   defaultHotkey,
@@ -108,6 +109,7 @@ export function ShortcutDialog({
                       ...draft,
                       keys: [],
                       mouseInput: "wheelUp",
+                      wheelSteps: 1,
                       modifiers: ["Alt"],
                     })
                     return
@@ -116,6 +118,7 @@ export function ShortcutDialog({
                     ...draft,
                     keys: draft.keys?.length ? draft.keys : ["Ctrl", "Alt", "K"],
                     mouseInput: "",
+                    wheelSteps: undefined,
                     modifiers: [],
                   })
                 }}
@@ -167,9 +170,16 @@ export function ShortcutDialog({
                   <Select
                     items={mouseInputItems}
                     value={draft.mouseInput ?? "wheelUp"}
-                    onValueChange={(mouseInput) =>
-                      mouseInput && setDraft({ ...draft, mouseInput })
-                    }
+                    onValueChange={(mouseInput) => {
+                      if (!mouseInput) return
+                      setDraft({
+                        ...draft,
+                        mouseInput,
+                        wheelSteps: mouseInput.startsWith("wheel")
+                          ? draft.wheelSteps ?? 1
+                          : undefined,
+                      })
+                    }}
                   >
                     <SelectTrigger className="w-full">
                       <SelectValue />
@@ -185,6 +195,15 @@ export function ShortcutDialog({
                     </SelectContent>
                   </Select>
                 </Field>
+                {(draft.mouseInput === "wheelUp" ||
+                  draft.mouseInput === "wheelDown") && (
+                  <WheelStepsInput
+                    value={draft.wheelSteps!}
+                    onValueChange={(wheelSteps) =>
+                      setDraft({ ...draft, wheelSteps })
+                    }
+                  />
+                )}
               </>
             )}
               <ActionEditor

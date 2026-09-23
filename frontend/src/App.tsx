@@ -10,15 +10,15 @@ import {
   FolderOpenIcon,
   Loader2Icon,
   MoreHorizontalIcon,
-  PencilIcon,
   PlusIcon,
   SettingsIcon,
   Trash2Icon,
 } from "lucide-react"
 
 import { EdgeWheelPanel } from "@/components/edge-wheel-panel"
-import { EditableListRow, stopListRowClick } from "@/components/editable-list-row"
+import { EditableListRow } from "@/components/editable-list-row"
 import { PanelLayout } from "@/components/panel-layout"
+import { RuleContextMenu } from "@/components/rule-context-menu"
 import { GestureGroupDialog } from "@/components/feature-dialogs"
 import { GestureGroupPanel } from "@/components/gesture-group-panel"
 import { KeyChord } from "@/components/key-chord"
@@ -493,10 +493,7 @@ function App() {
                   >
                     <span>通用快捷键</span>
                     {!profile.hotkeysEnabled && (
-                      <Badge
-                        variant="secondary"
-                        className="h-4 px-1.5 text-[10px] font-normal text-muted-foreground"
-                      >
+                      <Badge variant="secondary" className="ml-auto mr-5 shrink-0">
                         已禁用
                       </Badge>
                     )}
@@ -510,10 +507,7 @@ function App() {
                   >
                     <span>屏幕边缘</span>
                     {!profile.edgeWheelsEnabled && (
-                      <Badge
-                        variant="secondary"
-                        className="h-4 px-1.5 text-[10px] font-normal text-muted-foreground"
-                      >
+                      <Badge variant="secondary" className="ml-auto mr-5 shrink-0">
                         已禁用
                       </Badge>
                     )}
@@ -545,10 +539,7 @@ function App() {
                     >
                       <span>{triggerLabel(layer.trigger)}</span>
                       {!layer.enabled && (
-                        <Badge
-                          variant="secondary"
-                          className="h-4 px-1.5 text-[10px] font-normal text-muted-foreground"
-                        >
+                        <Badge variant="secondary" className="ml-auto mr-5 shrink-0">
                           已禁用
                         </Badge>
                       )}
@@ -593,10 +584,7 @@ function App() {
                     >
                       <span>{triggerLabel(group.trigger)}</span>
                       {!group.enabled && (
-                        <Badge
-                          variant="secondary"
-                          className="h-4 px-1.5 text-[10px] font-normal text-muted-foreground"
-                        >
+                        <Badge variant="secondary" className="ml-auto mr-5 shrink-0">
                           已禁用
                         </Badge>
                       )}
@@ -841,6 +829,12 @@ function HotkeysPanel({
             profile.hotkeys.map((rule, index) => (
             <div key={rule.id}>
               {index > 0 && <Separator />}
+              <RuleContextMenu
+                enabled={rule.enabled}
+                onToggle={() => onToggle(rule.id, !rule.enabled)}
+                onEdit={() => onEdit(rule)}
+                onDelete={() => onDelete(rule.id)}
+              >
               <EditableListRow onEdit={() => onEdit(rule)}>
                 <div className="w-40 shrink-0">
                   <KeyChord keys={hotkeyInputKeys(rule)} />
@@ -848,21 +842,9 @@ function HotkeysPanel({
                 <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
                   {actionSummary(rule.action)}
                 </div>
-                <div onClick={stopListRowClick} onKeyDown={stopListRowClick}>
-                  <Switch
-                    size="sm"
-                    checked={rule.enabled}
-                    onCheckedChange={(enabled) => onToggle(rule.id, enabled)}
-                    aria-label={"启用 " + hotkeyInputKeys(rule).join(" + ")}
-                  />
-                </div>
-                <div onClick={stopListRowClick} onKeyDown={stopListRowClick}>
-                  <RowMenu
-                    onEdit={() => onEdit(rule)}
-                    onDelete={() => onDelete(rule.id)}
-                  />
-                </div>
+                {!rule.enabled && <Badge variant="secondary" className="ml-auto shrink-0">已禁用</Badge>}
               </EditableListRow>
+              </RuleContextMenu>
             </div>
             ))
           )}
@@ -936,6 +918,17 @@ function LayerPanel({
                 layer.bindings.map((binding, index) => (
                   <div key={binding.id}>
                     {index > 0 && <Separator />}
+                    <RuleContextMenu
+                      enabled={binding.enabled}
+                      onToggle={() => onChange({
+                        ...layer,
+                        bindings: layer.bindings.map((item) =>
+                          item.id === binding.id ? { ...item, enabled: !item.enabled } : item,
+                        ),
+                      })}
+                      onEdit={() => onEditBinding(binding)}
+                      onDelete={() => onDeleteBinding(binding.id)}
+                    >
                     <EditableListRow onEdit={() => onEditBinding(binding)}>
                       <div className="w-36 shrink-0">
                         <KeyChord keys={binding.keys} />
@@ -943,13 +936,9 @@ function LayerPanel({
                       <div className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
                         {actionSummary(binding.action)}
                       </div>
-                      <div onClick={stopListRowClick} onKeyDown={stopListRowClick}>
-                        <RowMenu
-                          onEdit={() => onEditBinding(binding)}
-                          onDelete={() => onDeleteBinding(binding.id)}
-                        />
-                      </div>
+                      {!binding.enabled && <Badge variant="secondary" className="ml-auto shrink-0">已禁用</Badge>}
                     </EditableListRow>
+                    </RuleContextMenu>
                   </div>
                 ))
               )}
@@ -1125,13 +1114,7 @@ function SettingsPanel({
   )
 }
 
-function RowMenu({
-  onEdit,
-  onDelete,
-}: {
-  onEdit?: () => void
-  onDelete: () => void
-}) {
+function RowMenu({ onDelete }: { onDelete: () => void }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -1147,12 +1130,6 @@ function RowMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-32">
         <DropdownMenuGroup>
-          {onEdit && (
-            <DropdownMenuItem onClick={onEdit}>
-              <PencilIcon />
-              编辑
-            </DropdownMenuItem>
-          )}
           <DropdownMenuItem variant="destructive" onClick={onDelete}>
             <Trash2Icon />
             删除
