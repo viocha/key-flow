@@ -17,3 +17,58 @@ func TestActionPresetsValidAndUnique(t *testing.T) {
 		}
 	}
 }
+
+func TestNewMouseAndWindowActionsValidate(t *testing.T) {
+	valid := []Action{
+		{Type: ActionMouse, MouseCommand: "doubleClick"},
+		{Type: ActionMouse, MouseCommand: "wheelLeft", Delta: 1},
+		{Type: ActionMouse, MouseCommand: "wheelRight", Delta: 20},
+		{Type: ActionWindow, WindowCommand: "toggleVerticalMaximize"},
+		{Type: ActionWindow, WindowCommand: "opacity", Delta: -100},
+		{Type: ActionWindow, WindowCommand: "scale", Delta: 5},
+	}
+	for _, action := range valid {
+		if err := validateAction(action, 0); err != nil {
+			t.Errorf("有效动作 %+v 被拒绝: %v", action, err)
+		}
+	}
+	invalid := []Action{
+		{Type: ActionMouse, MouseCommand: "wheelUp"},
+		{Type: ActionMouse, MouseCommand: "wheelDown", Delta: 21},
+		{Type: ActionWindow, WindowCommand: "opacity"},
+	}
+	for _, action := range invalid {
+		if err := validateAction(action, 0); err == nil {
+			t.Errorf("无效动作 %+v 未被拒绝", action)
+		}
+	}
+	for _, input := range []string{"wheelLeft", "wheelRight"} {
+		if !isSupportedMouseShortcutInput(input) || !isWheelInput(input) {
+			t.Errorf("横向滚轮输入 %s 未被识别", input)
+		}
+	}
+}
+
+func TestAdjustablePresetsAreSingleParameterizedActions(t *testing.T) {
+	want := map[string]int{
+		"window-opacity":     5,
+		"window-scale":       5,
+		"media-volume":       5,
+		"display-brightness": 5,
+	}
+	for _, preset := range actionPresets() {
+		if delta, ok := want[preset.ID]; ok {
+			if preset.Action.Delta != delta {
+				t.Errorf("%s 默认变化 = %d，期望 %d", preset.ID, preset.Action.Delta, delta)
+			}
+			delete(want, preset.ID)
+		}
+		switch preset.ID {
+		case "window-opacity-up", "window-opacity-down", "media-volume-up", "media-volume-down", "display-brightness-up", "display-brightness-down":
+			t.Errorf("不应保留正反两个可参数化预置: %s", preset.ID)
+		}
+	}
+	if len(want) != 0 {
+		t.Fatalf("缺少可参数化预置: %v", want)
+	}
+}

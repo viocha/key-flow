@@ -44,6 +44,14 @@ func (s *AppService) GetStatus() EngineStatus {
 	return s.engine.Status()
 }
 
+func (s *AppService) BeginInputCapture() {
+	s.engine.BeginInputCapture()
+}
+
+func (s *AppService) EndInputCapture() {
+	s.engine.EndInputCapture()
+}
+
 func (s *AppService) GetConfigPath() string {
 	return s.store.Path()
 }

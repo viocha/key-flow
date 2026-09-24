@@ -9,10 +9,10 @@ import (
 )
 
 var modifierOrder = map[string]int{
-	"Ctrl":  0,
-	"Shift": 1,
+	"Win":   0,
+	"Ctrl":  1,
 	"Alt":   2,
-	"Win":   3,
+	"Shift": 3,
 }
 
 func canonicalChord(keys []string) (string, error) {

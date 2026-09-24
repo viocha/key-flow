@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import {
+  ActionType,
   EdgeAdjustmentType,
   type ActionPreset,
   type EdgeWheelRule,
@@ -8,7 +9,6 @@ import {
 
 import { ActionEditor } from "@/components/action-editor"
 import { GestureRecorder } from "@/components/gesture-recorder"
-import { KeyRecorder } from "@/components/key-recorder"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -20,6 +20,7 @@ import {
 import {
   Field,
   FieldDescription,
+  FieldError,
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field"
@@ -39,9 +40,13 @@ import {
 import {
   defaultEdgeWheel,
   defaultGesture,
+  emptyAction,
   defaultGestureGroup,
+  edgeWheelConflicts,
+  gestureBindingConflicts,
   type UiGestureGroup,
 } from "@/lib/app-model"
+import { useDialogTransition } from "@/hooks/use-dialog-transition"
 
 const edgeZoneItems = {
   topLeft: "左上角",
@@ -54,11 +59,19 @@ const edgeZoneItems = {
   bottomRight: "右下角",
 }
 
+const edgeWheelInputItems = {
+  wheelVertical: "垂直滚动",
+  wheelHorizontal: "水平滚动",
+}
+
 const edgeAdjustmentItems = {
   volume: "音量",
   brightness: "亮度",
-  recentApps: "最近应用",
-  bidirectionalKeys: "双向快捷键",
+  recentApps: "浏览最近应用",
+  switchApps: "切换应用",
+  switchTabs: "切换标签页",
+  page: "翻页",
+  custom: "自定义动作",
 }
 
 const gestureTriggerItems = {
@@ -84,6 +97,7 @@ export function GestureGroupDialog({
   onSave: (group: UiGestureGroup) => void
 }) {
   const [draft, setDraft] = useState<UiGestureGroup>(() => defaultGestureGroup())
+  const dialog = useDialogTransition(open, onClose)
 
   useEffect(() => {
     if (open) {
@@ -98,7 +112,11 @@ export function GestureGroupDialog({
   )
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+    <Dialog
+      open={dialog.dialogOpen}
+      onOpenChange={dialog.onOpenChange}
+      onOpenChangeComplete={dialog.onOpenChangeComplete}
+    >
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{isNew ? "添加手势分组" : "手势设置"}</DialogTitle>
@@ -175,7 +193,7 @@ export function GestureGroupDialog({
         </FieldGroup>
 
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose}>
+          <Button type="button" variant="outline" onClick={dialog.requestClose}>
             取消
           </Button>
           <Button
@@ -183,7 +201,7 @@ export function GestureGroupDialog({
             disabled={!draft.trigger}
             onClick={() => {
               onSave(draft)
-              onClose()
+              dialog.requestClose()
             }}
           >
             保存
@@ -197,17 +215,21 @@ export function GestureGroupDialog({
 export function GestureDialog({
   open,
   binding,
+  existingBindings,
   presets,
   onClose,
   onSave,
 }: {
   open: boolean
   binding?: GestureBinding
+  existingBindings: GestureBinding[]
   presets: ActionPreset[]
   onClose: () => void
   onSave: (binding: GestureBinding) => void
 }) {
   const [draft, setDraft] = useState<GestureBinding>(() => defaultGesture())
+  const dialog = useDialogTransition(open, onClose)
+  const duplicate = gestureBindingConflicts(draft, existingBindings)
 
   useEffect(() => {
     if (open) {
@@ -216,13 +238,17 @@ export function GestureDialog({
   }, [binding, open])
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+    <Dialog
+      open={dialog.dialogOpen}
+      onOpenChange={dialog.onOpenChange}
+      onOpenChangeComplete={dialog.onOpenChangeComplete}
+    >
       <DialogContent className="h-[calc(100vh-3rem)] max-h-[44rem] grid-rows-[auto_minmax(0,1fr)_auto] sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>{binding ? "编辑手势" : "添加手势"}</DialogTitle>
         </DialogHeader>
-        <ScrollArea className="min-h-0">
-          <div className="p-1">
+        <ScrollArea className="-mr-3 min-h-0">
+          <div className="p-1 pr-4">
             <FieldGroup>
               <Field>
                 <FieldLabel>路径</FieldLabel>
@@ -233,6 +259,7 @@ export function GestureDialog({
                     setDraft({ ...draft, preview, directions })
                   }
                 />
+                {duplicate && <FieldError>与已有手势冲突</FieldError>}
               </Field>
               <Field>
                 <FieldLabel htmlFor="gesture-name">名称</FieldLabel>
@@ -254,7 +281,7 @@ export function GestureDialog({
           </div>
         </ScrollArea>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose}>
+          <Button type="button" variant="outline" onClick={dialog.requestClose}>
             取消
           </Button>
           <Button
@@ -262,11 +289,12 @@ export function GestureDialog({
             disabled={
               !(draft.directions?.length) ||
               !draft.preview ||
-              draft.preview.length < 2
+              draft.preview.length < 2 ||
+              duplicate
             }
             onClick={() => {
               onSave(draft)
-              onClose()
+              dialog.requestClose()
             }}
           >
             保存
@@ -280,15 +308,21 @@ export function GestureDialog({
 export function EdgeWheelDialog({
   open,
   rule,
+  existingRules,
+  presets,
   onClose,
   onSave,
 }: {
   open: boolean
   rule?: EdgeWheelRule
+  existingRules: EdgeWheelRule[]
+  presets: ActionPreset[]
   onClose: () => void
   onSave: (rule: EdgeWheelRule) => void
 }) {
   const [draft, setDraft] = useState<EdgeWheelRule>(() => defaultEdgeWheel())
+  const dialog = useDialogTransition(open, onClose)
+  const duplicate = edgeWheelConflicts(draft, existingRules)
 
   useEffect(() => {
     if (open) {
@@ -298,43 +332,92 @@ export function EdgeWheelDialog({
 
   const isRecentApps =
     draft.adjustment === EdgeAdjustmentType.EdgeAdjustmentRecentApps
-  const isBidirectionalKeys =
-    draft.adjustment === EdgeAdjustmentType.EdgeAdjustmentBidirectionalKeys
-  const noStep = isRecentApps || isBidirectionalKeys
-  const maxStep =
-    draft.adjustment === EdgeAdjustmentType.EdgeAdjustmentBrightness ? 100 : 20
+  const isSwitchApps =
+    draft.adjustment === EdgeAdjustmentType.EdgeAdjustmentSwitchApps
+  const isSwitchTabs =
+    draft.adjustment === EdgeAdjustmentType.EdgeAdjustmentSwitchTabs
+  const isPage = draft.adjustment === EdgeAdjustmentType.EdgeAdjustmentPage
+  const isCustom = draft.adjustment === EdgeAdjustmentType.EdgeAdjustmentCustom
+  const customActionsIncomplete =
+    isCustom &&
+    (!draft.action ||
+      !draft.oppositeAction ||
+      (draft.action.type === ActionType.ActionKeyStroke && !draft.action.keys?.length) ||
+      (draft.oppositeAction.type === ActionType.ActionKeyStroke &&
+        !draft.oppositeAction.keys?.length))
+  const incomplete = !draft.zone || !draft.input || customActionsIncomplete
+  const [firstDirectionLabel, secondDirectionLabel] =
+    draft.input === "wheelHorizontal"
+      ? ["滚轮向左", "滚轮向右"]
+      : ["滚轮向上", "滚轮向下"]
+  const noStep =
+    isRecentApps ||
+    isSwitchApps ||
+    isSwitchTabs ||
+    isPage ||
+    isCustom
+  const maxStep = 100
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="sm:max-w-md">
+    <Dialog
+      open={dialog.dialogOpen}
+      onOpenChange={dialog.onOpenChange}
+      onOpenChangeComplete={dialog.onOpenChangeComplete}
+    >
+      <DialogContent className="h-[calc(100vh-3rem)] max-h-[42rem] grid-rows-[auto_minmax(0,1fr)_auto] sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{rule ? "编辑屏幕边缘" : "添加屏幕边缘"}</DialogTitle>
         </DialogHeader>
 
-        <FieldGroup>
-          <Field>
-            <FieldLabel>方位</FieldLabel>
-            <Select
-              items={edgeZoneItems}
-              value={draft.zone}
-              onValueChange={(value) =>
-                value && setDraft({ ...draft, zone: value })
-              }
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent alignItemWithTrigger={false}>
-                <SelectGroup>
-                  {Object.entries(edgeZoneItems).map(([value, label]) => (
-                    <SelectItem key={value} value={value}>
-                      {label}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </Field>
+        <ScrollArea className="-mr-3 min-h-0">
+          <div className="p-1 pr-4">
+            <FieldGroup>
+              <Field>
+                <FieldLabel>方位</FieldLabel>
+                <Select
+                  items={edgeZoneItems}
+                  value={draft.zone || null}
+                  onValueChange={(value) =>
+                    value && setDraft({ ...draft, zone: value })
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="选择方位" />
+                  </SelectTrigger>
+                  <SelectContent alignItemWithTrigger={false}>
+                    <SelectGroup>
+                      {Object.entries(edgeZoneItems).map(([value, label]) => (
+                        <SelectItem key={value} value={value}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </Field>
+
+              <Field>
+                <FieldLabel>滚轮方向</FieldLabel>
+                <Select
+                  items={edgeWheelInputItems}
+                  value={draft.input || null}
+                  onValueChange={(input) => input && setDraft({ ...draft, input })}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="选择滚轮方向" />
+                  </SelectTrigger>
+                  <SelectContent alignItemWithTrigger={false}>
+                    <SelectGroup>
+                      {Object.entries(edgeWheelInputItems).map(([value, label]) => (
+                        <SelectItem key={value} value={value}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                {duplicate && <FieldError>与已有屏幕边缘规则冲突</FieldError>}
+              </Field>
 
           <Field>
             <FieldLabel>调节项</FieldLabel>
@@ -348,18 +431,14 @@ export function EdgeWheelDialog({
                   ...draft,
                   adjustment,
                   step:
-                    adjustment === EdgeAdjustmentType.EdgeAdjustmentBrightness
+                    adjustment === EdgeAdjustmentType.EdgeAdjustmentBrightness ||
+                    adjustment === EdgeAdjustmentType.EdgeAdjustmentVolume
                       ? 5
                       : 1,
-                  ...(adjustment ===
-                  EdgeAdjustmentType.EdgeAdjustmentBidirectionalKeys
+                  ...(adjustment === EdgeAdjustmentType.EdgeAdjustmentCustom
                     ? {
-                        upKeys: draft.upKeys?.length
-                          ? draft.upKeys
-                          : ["Ctrl", "Shift", "Tab"],
-                        downKeys: draft.downKeys?.length
-                          ? draft.downKeys
-                          : ["Ctrl", "Tab"],
+                        action: draft.action ?? emptyAction(),
+                        oppositeAction: draft.oppositeAction ?? emptyAction(),
                       }
                     : {}),
                 })
@@ -381,12 +460,19 @@ export function EdgeWheelDialog({
                   <SelectItem
                     value={EdgeAdjustmentType.EdgeAdjustmentRecentApps}
                   >
-                    最近应用
+                    浏览最近应用
                   </SelectItem>
-                  <SelectItem
-                    value={EdgeAdjustmentType.EdgeAdjustmentBidirectionalKeys}
-                  >
-                    双向快捷键
+                  <SelectItem value={EdgeAdjustmentType.EdgeAdjustmentSwitchApps}>
+                    切换应用
+                  </SelectItem>
+                  <SelectItem value={EdgeAdjustmentType.EdgeAdjustmentSwitchTabs}>
+                    切换标签页
+                  </SelectItem>
+                  <SelectItem value={EdgeAdjustmentType.EdgeAdjustmentPage}>
+                    翻页
+                  </SelectItem>
+                  <SelectItem value={EdgeAdjustmentType.EdgeAdjustmentCustom}>
+                    自定义动作
                   </SelectItem>
                 </SelectGroup>
               </SelectContent>
@@ -429,7 +515,8 @@ export function EdgeWheelDialog({
                       aria-label="每次变化量"
                     />
                     <span>
-                      {draft.adjustment === EdgeAdjustmentType.EdgeAdjustmentBrightness
+                      {draft.adjustment === EdgeAdjustmentType.EdgeAdjustmentBrightness ||
+                      draft.adjustment === EdgeAdjustmentType.EdgeAdjustmentVolume
                         ? "%"
                         : "档"}
                     </span>
@@ -443,42 +530,44 @@ export function EdgeWheelDialog({
             <Field className="w-full">
               <FieldLabel>操作</FieldLabel>
               <FieldDescription className="w-full">
-                滚轮切换最近应用；左键确认，右键取消
+                滚轮浏览最近应用；左键确认，右键取消
               </FieldDescription>
             </Field>
           )}
 
-          {isBidirectionalKeys && (
-            <FieldGroup className="gap-3">
-              <Field>
-                <FieldLabel>滚轮向上</FieldLabel>
-                <KeyRecorder
-                  value={draft.upKeys}
-                  onChange={(upKeys) => setDraft({ ...draft, upKeys })}
-                  className="w-full"
-                />
-              </Field>
-              <Field>
-                <FieldLabel>滚轮向下</FieldLabel>
-                <KeyRecorder
-                  value={draft.downKeys}
-                  onChange={(downKeys) => setDraft({ ...draft, downKeys })}
-                  className="w-full"
-                />
-              </Field>
+
+              {isCustom && draft.action && draft.oppositeAction && (
+                <FieldGroup className="gap-4">
+                  <ActionEditor
+                    action={draft.action}
+                    presets={presets}
+                    label={`${firstDirectionLabel}动作`}
+                    onChange={(action) => setDraft({ ...draft, action })}
+                  />
+                  <ActionEditor
+                    action={draft.oppositeAction}
+                    presets={presets}
+                    label={`${secondDirectionLabel}动作`}
+                    onChange={(oppositeAction) =>
+                      setDraft({ ...draft, oppositeAction })
+                    }
+                  />
+                </FieldGroup>
+              )}
             </FieldGroup>
-          )}
-        </FieldGroup>
+          </div>
+        </ScrollArea>
 
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose}>
+          <Button type="button" variant="outline" onClick={dialog.requestClose}>
             取消
           </Button>
           <Button
             type="button"
+            disabled={duplicate || incomplete}
             onClick={() => {
               onSave(draft)
-              onClose()
+              dialog.requestClose()
             }}
           >
             保存

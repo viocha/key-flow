@@ -1,6 +1,7 @@
 import { useRef, useState } from "react"
 import {
   EdgeAdjustmentType,
+  type ActionPreset,
   type EdgeWheelRule,
 } from "../../bindings/key-flow"
 import {
@@ -9,7 +10,6 @@ import {
 
 import { EditableListRow } from "@/components/editable-list-row"
 import { EdgeWheelDialog } from "@/components/feature-dialogs"
-import { KeyChord } from "@/components/key-chord"
 import { ReorderHandle, useListReorder } from "@/components/list-reorder"
 import { PanelLayout } from "@/components/panel-layout"
 import { RuleContextMenu } from "@/components/rule-context-menu"
@@ -32,14 +32,19 @@ import { Switch } from "@/components/ui/switch"
 import {
   defaultEdgeWheel,
   edgeAdjustmentLabel,
+  edgeWheelConflicts,
+  edgeWheelInputLabel,
   edgeZoneLabel,
+  mouseShortcutActionSummary,
 } from "@/lib/app-model"
+import { useDialogTransition } from "@/hooks/use-dialog-transition"
 import { showUndoDeleteToast } from "@/lib/undo-toast"
 
 export function EdgeWheelPanel({
   enabled,
   marginPx,
   rules,
+  presets,
   onEnabledChange,
   onMarginChange,
   onChange,
@@ -47,6 +52,7 @@ export function EdgeWheelPanel({
   enabled: boolean
   marginPx: number
   rules: EdgeWheelRule[]
+  presets: ActionPreset[]
   onEnabledChange: (enabled: boolean) => void
   onMarginChange: (marginPx: number) => void
   onChange: (rules: EdgeWheelRule[]) => void
@@ -55,12 +61,14 @@ export function EdgeWheelPanel({
     { open: false } | { open: true; rule?: EdgeWheelRule }
   >({ open: false })
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const settingsDialog = useDialogTransition(settingsOpen, () => setSettingsOpen(false))
   const [marginDraft, setMarginDraft] = useState(marginPx)
   const rulesRef = useRef(rules)
   rulesRef.current = rules
   const reorder = useListReorder(rules, (rule) => rule.id, onChange)
 
   const saveRule = (rule: EdgeWheelRule) => {
+    if (edgeWheelConflicts(rule, rules)) return
     const exists = rules.some((item) => item.id === rule.id)
     onChange(
       exists
@@ -102,7 +110,7 @@ export function EdgeWheelPanel({
             }
           >
             <PlusIcon data-icon="inline-start" />
-            添加规则
+            添加
           </Button>
           <Button
             type="button"
@@ -139,26 +147,23 @@ export function EdgeWheelPanel({
                 >
                 <EditableListRow onEdit={() => setDialog({ open: true, rule })}>
                   {reorder.canReorder && <ReorderHandle props={reorder.handleProps(rule.id)} />}
-                  <div className="w-24 shrink-0 text-sm font-medium">
-                    {edgeZoneLabel(rule.zone)}
-                  </div>
-                  <div className="flex min-w-0 flex-1 items-center gap-2 text-sm">
+                  <div className="flex min-w-0 flex-1 items-center gap-4 text-sm">
+                    <div className="shrink-0 font-medium">
+                      {edgeZoneLabel(rule.zone)}
+                    </div>
+                    <div className="shrink-0 text-muted-foreground">
+                      {edgeWheelInputLabel(rule.input)}
+                    </div>
                     <div className="min-w-0 flex-1">
-                      {rule.adjustment ===
-                      EdgeAdjustmentType.EdgeAdjustmentBidirectionalKeys ? (
-                        <div className="flex min-w-0 items-center gap-4">
-                          <div className="flex min-w-0 items-center gap-2">
-                            <span className="shrink-0 text-muted-foreground">↑</span>
-                            <KeyChord keys={rule.upKeys} />
-                          </div>
-                          <div className="flex min-w-0 items-center gap-2">
-                            <span className="shrink-0 text-muted-foreground">↓</span>
-                            <KeyChord keys={rule.downKeys} />
-                          </div>
-                        </div>
-                      ) : (
-                        edgeAdjustmentLabel(rule.adjustment)
-                      )}
+                      {rule.adjustment === EdgeAdjustmentType.EdgeAdjustmentCustom &&
+                      rule.action &&
+                      rule.oppositeAction
+                        ? mouseShortcutActionSummary(
+                            rule.input,
+                            rule.action,
+                            rule.oppositeAction,
+                          )
+                        : edgeAdjustmentLabel(rule.adjustment)}
                     </div>
                   </div>
                   {!rule.enabled && <Badge variant="secondary" className="ml-auto shrink-0">已禁用</Badge>}
@@ -173,11 +178,17 @@ export function EdgeWheelPanel({
       <EdgeWheelDialog
         open={dialog.open}
         rule={dialog.open ? dialog.rule : undefined}
+        existingRules={rules}
+        presets={presets}
         onClose={() => setDialog({ open: false })}
         onSave={saveRule}
       />
 
-      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+      <Dialog
+        open={settingsDialog.dialogOpen}
+        onOpenChange={settingsDialog.onOpenChange}
+        onOpenChangeComplete={settingsDialog.onOpenChangeComplete}
+      >
         <DialogContent showCloseButton={false}>
           <DialogHeader>
             <DialogTitle>屏幕边缘设置</DialogTitle>
@@ -196,7 +207,7 @@ export function EdgeWheelPanel({
             <Button
               type="button"
               variant="outline"
-              onClick={() => setSettingsOpen(false)}
+              onClick={settingsDialog.requestClose}
             >
               取消
             </Button>
@@ -204,7 +215,7 @@ export function EdgeWheelPanel({
               type="button"
               onClick={() => {
                 onMarginChange(marginDraft)
-                setSettingsOpen(false)
+                settingsDialog.requestClose()
               }}
             >
               保存

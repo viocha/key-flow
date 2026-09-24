@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -82,7 +83,9 @@ func (s *ConfigStore) load() error {
 	}
 
 	var config AppConfig
-	if err := json.Unmarshal(data, &config); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&config); err != nil {
 		return fmt.Errorf("解析配置失败: %w", err)
 	}
 	config = normalizeConfig(config)
@@ -120,9 +123,6 @@ func defaultConfig() AppConfig {
 }
 
 func normalizeConfig(config AppConfig) AppConfig {
-	if config.Settings.DefaultHoldMS == 0 {
-		config.Settings.DefaultHoldMS = 200
-	}
 	for pi := range config.Profiles {
 		profile := &config.Profiles[pi]
 		profile.Name = strings.TrimSpace(profile.Name)
@@ -141,45 +141,17 @@ func normalizeConfig(config AppConfig) AppConfig {
 		for li := range profile.Layers {
 			layer := &profile.Layers[li]
 			layer.Name = strings.TrimSpace(layer.Name)
-			if layer.HoldMS == 0 {
-				layer.HoldMS = config.Settings.DefaultHoldMS
-			}
-			if layer.TapBehavior == "" {
-				layer.TapBehavior = "original"
-			}
 			if layer.MouseShortcuts == nil {
 				layer.MouseShortcuts = []MouseShortcutBinding{}
-			}
-			if layer.WindowOperations.ScaleStepPercent == 0 {
-				layer.WindowOperations.ScaleStepPercent = 5
 			}
 		}
 		for gi := range profile.Gestures {
 			group := &profile.Gestures[gi]
-			if group.StartDistancePX == 0 {
-				group.StartDistancePX = 18
-			}
-			if group.SegmentDistancePX == 0 {
-				group.SegmentDistancePX = 28
-			}
 			if group.Bindings == nil {
 				group.Bindings = []GestureBinding{}
 			}
 			for bi := range group.Bindings {
 				group.Bindings[bi].Name = strings.TrimSpace(group.Bindings[bi].Name)
-			}
-		}
-		for ei := range profile.EdgeWheels {
-			rule := &profile.EdgeWheels[ei]
-			if rule.Adjustment == "" {
-				rule.Adjustment = EdgeAdjustmentVolume
-			}
-			if rule.Step == 0 {
-				if rule.Adjustment == EdgeAdjustmentBrightness {
-					rule.Step = 5
-				} else {
-					rule.Step = 1
-				}
 			}
 		}
 	}
@@ -219,7 +191,7 @@ func validateConfig(config AppConfig) error {
 			if rule.ID == "" {
 				return errors.New("快捷键规则的 ID 不能为空")
 			}
-			var shortcutKey string
+			var shortcutKeys []string
 			if rule.MouseInput != "" {
 				if len(rule.Keys) != 0 {
 					return errors.New("通用快捷键不能同时配置键盘按键和鼠标输入")
@@ -239,11 +211,13 @@ func validateConfig(config AppConfig) error {
 				if len(modifiers) == 0 {
 					return errors.New("通用鼠标快捷键至少需要一个修饰键")
 				}
-				key, err := mouseShortcutKey(modifiers, rule.MouseInput)
-				if err != nil {
-					return fmt.Errorf("通用快捷键无效: %w", err)
+				for _, input := range mouseShortcutInputs(rule.MouseInput) {
+					key, err := mouseShortcutKey(modifiers, input)
+					if err != nil {
+						return fmt.Errorf("通用快捷键无效: %w", err)
+					}
+					shortcutKeys = append(shortcutKeys, "mouse:"+key)
 				}
-				shortcutKey = "mouse:" + key
 			} else {
 				if len(rule.Modifiers) != 0 {
 					return errors.New("通用快捷键未配置鼠标输入，不能单独设置鼠标修饰键")
@@ -252,16 +226,21 @@ func validateConfig(config AppConfig) error {
 				if err != nil {
 					return fmt.Errorf("通用快捷键无效: %w", err)
 				}
-				shortcutKey = "key:" + chord
+				shortcutKeys = []string{"key:" + chord}
 			}
 			if rule.Enabled {
-				if _, exists := hotkeyChords[shortcutKey]; exists {
-					return fmt.Errorf("快捷键冲突: 重复使用 %s", strings.TrimPrefix(strings.TrimPrefix(shortcutKey, "key:"), "mouse:"))
+				for _, shortcutKey := range shortcutKeys {
+					if _, exists := hotkeyChords[shortcutKey]; exists {
+						return fmt.Errorf("快捷键冲突: 重复使用 %s", strings.TrimPrefix(strings.TrimPrefix(shortcutKey, "key:"), "mouse:"))
+					}
+					hotkeyChords[shortcutKey] = struct{}{}
 				}
-				hotkeyChords[shortcutKey] = struct{}{}
 			}
 			if err := validateAction(rule.Action, 0); err != nil {
 				return fmt.Errorf("通用快捷键动作无效: %w", err)
+			}
+			if err := validateOppositeMouseAction(rule.MouseInput, rule.OppositeAction); err != nil {
+				return fmt.Errorf("通用快捷键反向动作无效: %w", err)
 			}
 		}
 
@@ -341,7 +320,7 @@ func validateConfig(config AppConfig) error {
 		if profile.EdgeWheelMarginPX < 1 || profile.EdgeWheelMarginPX > 64 {
 			return errors.New("屏幕边缘触发范围须为 1–64 像素")
 		}
-		edgeZones := map[string]struct{}{}
+		edgeInputs := map[string]struct{}{}
 		for _, rule := range profile.EdgeWheels {
 			if rule.ID == "" {
 				return errors.New("屏幕边缘规则的 ID 不能为空")
@@ -349,31 +328,38 @@ func validateConfig(config AppConfig) error {
 			if !isSupportedEdgeZone(rule.Zone) {
 				return fmt.Errorf("不支持的屏幕边缘区域: %s", rule.Zone)
 			}
+			if !isSupportedEdgeWheelInput(rule.Input) {
+				return fmt.Errorf("不支持的屏幕边缘滚轮方向: %s", rule.Input)
+			}
 			if err := validateWheelSteps(rule.WheelSteps); err != nil {
 				return fmt.Errorf("屏幕边缘 %s 的滚轮灵敏度无效: %w", rule.Zone, err)
 			}
 			if rule.Enabled {
-				if _, exists := edgeZones[rule.Zone]; exists {
-					return fmt.Errorf("屏幕边缘区域重复: %s", rule.Zone)
+				key := rule.Zone + ":" + rule.Input
+				if _, exists := edgeInputs[key]; exists {
+					return fmt.Errorf("屏幕边缘区域与滚轮方向重复: %s", rule.Zone)
 				}
-				edgeZones[rule.Zone] = struct{}{}
+				edgeInputs[key] = struct{}{}
 			}
 			switch rule.Adjustment {
 			case EdgeAdjustmentVolume:
-				if rule.Step < 1 || rule.Step > 20 {
-					return fmt.Errorf("屏幕边缘 %s 的音量步长须为 1–20", rule.Zone)
+				if rule.Step < 1 || rule.Step > 100 {
+					return fmt.Errorf("屏幕边缘 %s 的音量变化须为 1–100%%", rule.Zone)
 				}
 			case EdgeAdjustmentBrightness:
 				if rule.Step < 1 || rule.Step > 100 {
 					return fmt.Errorf("屏幕边缘 %s 的亮度步长须为 1–100", rule.Zone)
 				}
-			case EdgeAdjustmentRecentApps:
-			case EdgeAdjustmentBidirectionalKeys:
-				if _, err := canonicalChord(rule.UpKeys); err != nil {
-					return fmt.Errorf("屏幕边缘 %s 的滚轮向上快捷键无效: %w", rule.Zone, err)
+			case EdgeAdjustmentRecentApps, EdgeAdjustmentSwitchApps, EdgeAdjustmentSwitchTabs, EdgeAdjustmentPage:
+			case EdgeAdjustmentCustom:
+				if rule.Action == nil || rule.OppositeAction == nil {
+					return fmt.Errorf("屏幕边缘 %s 的自定义动作不完整", rule.Zone)
 				}
-				if _, err := canonicalChord(rule.DownKeys); err != nil {
-					return fmt.Errorf("屏幕边缘 %s 的滚轮向下快捷键无效: %w", rule.Zone, err)
+				if err := validateAction(*rule.Action, 0); err != nil {
+					return fmt.Errorf("屏幕边缘 %s 的第一方向动作无效: %w", rule.Zone, err)
+				}
+				if err := validateAction(*rule.OppositeAction, 0); err != nil {
+					return fmt.Errorf("屏幕边缘 %s 的第二方向动作无效: %w", rule.Zone, err)
 				}
 			default:
 				return fmt.Errorf("屏幕边缘 %s 的调节类型无效: %s", rule.Zone, rule.Adjustment)
@@ -403,20 +389,25 @@ func validateMouseBindings(trigger string, shortcuts []MouseShortcutBinding, win
 		if binding.Input == triggerInput {
 			return fmt.Errorf("%s 已作为当前触发键", mouseInputLabel(binding.Input))
 		}
-		key, err := mouseShortcutKey(binding.Modifiers, binding.Input)
-		if err != nil {
-			return fmt.Errorf("%s修饰键无效: %w", mouseInputLabel(binding.Input), err)
-		}
 		label := mouseShortcutBindingLabel(binding.Modifiers, binding.Input)
-		if previous, exists := used[key]; exists {
-			return fmt.Errorf("鼠标快捷键重复: %s 与 %s", previous, label)
-		}
-		used[key] = label
-		if binding.Enabled {
-			usedInputs[binding.Input] = label
+		for _, input := range mouseShortcutInputs(binding.Input) {
+			key, err := mouseShortcutKey(binding.Modifiers, input)
+			if err != nil {
+				return fmt.Errorf("%s修饰键无效: %w", mouseInputLabel(binding.Input), err)
+			}
+			if previous, exists := used[key]; exists {
+				return fmt.Errorf("鼠标快捷键重复: %s 与 %s", previous, label)
+			}
+			used[key] = label
+			if binding.Enabled {
+				usedInputs[input] = label
+			}
 		}
 		if err := validateAction(binding.Action, 0); err != nil {
 			return fmt.Errorf("%s动作无效: %w", label, err)
+		}
+		if err := validateOppositeMouseAction(binding.Input, binding.OppositeAction); err != nil {
+			return fmt.Errorf("%s反向动作无效: %w", label, err)
 		}
 	}
 
@@ -446,25 +437,44 @@ func validateMouseBindings(trigger string, shortcuts []MouseShortcutBinding, win
 	if window.MoveButton != "" && window.MoveButton == window.ResizeButton {
 		return errors.New("拖动窗口与调整窗口尺寸不能使用同一个鼠标键")
 	}
-	if window.ScaleWheel {
-		if err := validateWheelSteps(window.WheelSteps); err != nil {
-			return fmt.Errorf("窗口中心缩放的滚轮灵敏度无效: %w", err)
-		}
-		if window.ScaleStepPercent < 1 || window.ScaleStepPercent > 50 {
-			return errors.New("窗口中心缩放步长须为 1–50%")
-		}
-		if _, exists := usedInputs["wheelUp"]; exists {
-			return errors.New("窗口中心缩放与滚轮向上快捷键冲突")
-		}
-		if _, exists := usedInputs["wheelDown"]; exists {
-			return errors.New("窗口中心缩放与滚轮向下快捷键冲突")
-		}
-	}
 	return nil
 }
 
 func isWheelInput(input string) bool {
-	return input == "wheelUp" || input == "wheelDown"
+	switch input {
+	case "wheelUp", "wheelDown", "wheelLeft", "wheelRight", "wheelVertical", "wheelHorizontal":
+		return true
+	default:
+		return false
+	}
+}
+
+func isSupportedEdgeWheelInput(input string) bool {
+	return input == "wheelVertical" || input == "wheelHorizontal"
+}
+
+func mouseShortcutInputs(input string) []string {
+	switch input {
+	case "wheelVertical":
+		return []string{"wheelUp", "wheelDown"}
+	case "wheelHorizontal":
+		return []string{"wheelLeft", "wheelRight"}
+	default:
+		return []string{input}
+	}
+}
+
+func validateOppositeMouseAction(input string, action *Action) error {
+	if len(mouseShortcutInputs(input)) == 1 {
+		if action != nil {
+			return errors.New("单向输入不能配置反向动作")
+		}
+		return nil
+	}
+	if action == nil {
+		return errors.New("双向输入需要配置两个动作")
+	}
+	return validateAction(*action, 0)
 }
 
 func validateWheelSteps(steps int) error {
@@ -484,7 +494,7 @@ func mouseShortcutBindingLabel(modifiers []string, input string) string {
 
 func isSupportedMouseShortcutInput(input string) bool {
 	switch input {
-	case "left", "right", "middle", "back", "forward", "wheelUp", "wheelDown":
+	case "left", "right", "middle", "back", "forward", "wheelUp", "wheelDown", "wheelLeft", "wheelRight", "wheelVertical", "wheelHorizontal":
 		return true
 	default:
 		return false
@@ -531,6 +541,14 @@ func mouseInputLabel(input string) string {
 		return "滚轮向上"
 	case "wheelDown":
 		return "滚轮向下"
+	case "wheelLeft":
+		return "滚轮向左"
+	case "wheelRight":
+		return "滚轮向右"
+	case "wheelVertical":
+		return "垂直滚动"
+	case "wheelHorizontal":
+		return "水平滚动"
 	default:
 		return input
 	}
@@ -608,7 +626,15 @@ func validateAction(action Action, depth int) error {
 		}
 	case ActionWindow:
 		switch action.WindowCommand {
-		case "close", "terminateProcess", "minimize", "maximize", "restore", "toggleMaximize", "previousWindow", "nextWindow", "restoreMinimized":
+		case "close", "terminateProcess", "minimize", "maximize", "restore", "toggleMaximize", "toggleVerticalMaximize", "previousWindow", "nextWindow", "restoreMinimized":
+		case "opacity", "scale":
+			if action.Delta == 0 || action.Delta < -100 || action.Delta > 100 {
+				name := "透明度"
+				if action.WindowCommand == "scale" {
+					name = "缩放"
+				}
+				return fmt.Errorf("窗口%s变化须为 -100–100 且不能为 0", name)
+			}
 		case "alwaysOnTop":
 			if _, err := parseWindowBorderColor(action.WindowBorderColor); err != nil {
 				return err
@@ -619,9 +645,19 @@ func validateAction(action Action, depth int) error {
 		default:
 			return fmt.Errorf("未知窗口命令: %s", action.WindowCommand)
 		}
+	case ActionMouse:
+		switch action.MouseCommand {
+		case "leftClick", "rightClick", "middleClick", "backClick", "forwardClick", "doubleClick":
+		case "wheelUp", "wheelDown", "wheelLeft", "wheelRight":
+			if action.Delta < 1 || action.Delta > 20 {
+				return errors.New("鼠标滚动格数须为 1–20")
+			}
+		default:
+			return fmt.Errorf("未知鼠标命令: %s", action.MouseCommand)
+		}
 	case ActionVolume:
-		if action.Delta == 0 || action.Delta < -20 || action.Delta > 20 {
-			return errors.New("音量变化步数须为 -20–20 且不能为 0")
+		if action.Delta == 0 || action.Delta < -100 || action.Delta > 100 {
+			return errors.New("音量变化须为 -100–100% 且不能为 0")
 		}
 	case ActionBrightness:
 		if action.Delta == 0 || action.Delta < -100 || action.Delta > 100 {

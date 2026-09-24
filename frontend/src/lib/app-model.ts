@@ -70,9 +70,6 @@ export function normalizeConfig(config: AppConfig): UiConfig {
           enabled: layer.windowOperations?.enabled ?? false,
           moveButton: layer.windowOperations?.moveButton ?? "",
           resizeButton: layer.windowOperations?.resizeButton ?? "",
-          scaleWheel: layer.windowOperations?.scaleWheel ?? false,
-          scaleStepPercent: layer.windowOperations?.scaleStepPercent || 5,
-          wheelSteps: layer.windowOperations.wheelSteps,
         },
       })),
     })),
@@ -94,7 +91,7 @@ export function newID(prefix: string) {
 export function actionSummary(action: Action) {
   switch (action.type) {
     case ActionType.ActionKeyStroke:
-      return (action.keys ?? []).join(" + ")
+      return orderShortcutKeys(action.keys).join(" + ")
     case ActionType.ActionText:
       return action.text ? "输入 “" + shortText(action.text) + "”" : "输入文本"
     case ActionType.ActionLaunch:
@@ -106,11 +103,28 @@ export function actionSummary(action: Action) {
     case ActionType.ActionEdit:
       return editCommandLabel(action.editCommand ?? "")
     case ActionType.ActionWindow:
+      if (action.windowCommand === "opacity") {
+        const delta = action.delta ?? 0
+        return delta > 0
+          ? `透明度 +${delta}%`
+          : `透明度 ${delta}%`
+      }
+      if (action.windowCommand === "scale") {
+        const delta = action.delta ?? 0
+        return delta > 0
+          ? `窗口缩放 +${delta}%`
+          : `窗口缩放 ${delta}%`
+      }
       return windowCommandLabel(action.windowCommand ?? "")
+    case ActionType.ActionMouse:
+      return mouseCommandLabel(action.mouseCommand ?? "") +
+        (action.mouseCommand?.startsWith("wheel") && (action.delta ?? 1) > 1
+          ? ` ${action.delta} 格`
+          : "")
     case ActionType.ActionVolume:
       return action.delta && action.delta > 0
-        ? "音量 +" + action.delta
-        : "音量 " + (action.delta ?? 0)
+        ? "音量 +" + action.delta + "%"
+        : "音量 " + (action.delta ?? 0) + "%"
     case ActionType.ActionBrightness:
       return action.delta && action.delta > 0
         ? "亮度 +" + action.delta + "%"
@@ -140,8 +154,14 @@ export function editCommandLabel(command: string) {
 export function gestureBindingLabel(binding: GestureBinding) {
   const customName = binding.name?.trim()
   if (customName) return customName
-  if (binding.action.type === ActionType.ActionWindow) {
-    return windowCommandLabel(binding.action.windowCommand ?? "")
+  if (
+    binding.action.type === ActionType.ActionWindow ||
+    binding.action.type === ActionType.ActionVolume ||
+    binding.action.type === ActionType.ActionBrightness ||
+    (binding.action.type === ActionType.ActionMouse &&
+      binding.action.mouseCommand?.startsWith("wheel"))
+  ) {
+    return actionSummary(binding.action)
   }
   const actionName = binding.action.name?.trim()
   return actionName || actionSummary(binding.action)
@@ -167,11 +187,33 @@ export function windowCommandLabel(command: string) {
       return "恢复窗口"
     case "toggleMaximize":
       return "切换最大化"
+    case "toggleVerticalMaximize":
+      return "切换垂直最大化"
+    case "opacity":
+      return "更改窗口透明度"
+    case "scale":
+      return "窗口中心缩放"
     case "alwaysOnTop":
       return "切换置顶"
     default:
       return "窗口操作"
   }
+}
+
+export function mouseCommandLabel(command: string) {
+  const labels: Record<string, string> = {
+    leftClick: "左键单击",
+    doubleClick: "左键双击",
+    rightClick: "右键单击",
+    middleClick: "中键单击",
+    backClick: "后退键单击",
+    forwardClick: "前进键单击",
+    wheelUp: "向上滚动",
+    wheelDown: "向下滚动",
+    wheelLeft: "向左滚动",
+    wheelRight: "向右滚动",
+  }
+  return labels[command] ?? "鼠标操作"
 }
 
 export function mouseInputLabel(input: string) {
@@ -190,12 +232,28 @@ export function mouseInputLabel(input: string) {
       return "滚轮向上"
     case "wheelDown":
       return "滚轮向下"
+    case "wheelLeft":
+      return "滚轮向左"
+    case "wheelRight":
+      return "滚轮向右"
+    case "wheelVertical":
+      return "垂直滚动"
+    case "wheelHorizontal":
+      return "水平滚动"
     default:
       return input
   }
 }
 
-const mouseModifierOrder = ["Ctrl", "Shift", "Alt", "Win"] as const
+const mouseModifierOrder = ["Win", "Ctrl", "Alt", "Shift"] as const
+
+export function orderShortcutKeys(keys?: readonly string[] | null) {
+  const ordered = normalizeMouseModifiers(keys)
+  const mainKeys = (keys ?? []).filter(
+    (key) => !mouseModifierOrder.includes(key as (typeof mouseModifierOrder)[number]),
+  )
+  return [...ordered, ...mainKeys]
+}
 
 export function normalizeMouseModifiers(modifiers?: readonly string[] | null) {
   const selected = new Set(modifiers ?? [])
@@ -204,6 +262,203 @@ export function normalizeMouseModifiers(modifiers?: readonly string[] | null) {
 
 export function mouseShortcutKey(binding: MouseShortcutBinding) {
   return [...normalizeMouseModifiers(binding.modifiers), binding.input].join("+")
+}
+
+export function mouseShortcutInputs(input: string) {
+  if (input === "wheelVertical") return ["wheelUp", "wheelDown"]
+  if (input === "wheelHorizontal") return ["wheelLeft", "wheelRight"]
+  return [input]
+}
+
+export function mouseShortcutKeys(binding: Pick<MouseShortcutBinding, "input" | "modifiers">) {
+  return mouseShortcutInputs(binding.input).map((input) =>
+    [...normalizeMouseModifiers(binding.modifiers), input].join("+"),
+  )
+}
+
+export function hotkeyShortcutKeys(
+  rule: Pick<HotkeyRule, "keys" | "mouseInput" | "modifiers">,
+) {
+  if (rule.mouseInput) {
+    return mouseShortcutKeys({
+      input: rule.mouseInput,
+      modifiers: rule.modifiers,
+    }).map((key) => "mouse:" + key)
+  }
+  if (!rule.keys?.length) return []
+  return ["key:" + orderShortcutKeys(rule.keys).join("+")]
+}
+
+export function hotkeyConflicts(rule: HotkeyRule, existingRules: HotkeyRule[]) {
+  if (!rule.enabled) return false
+  const keys = new Set(hotkeyShortcutKeys(rule))
+  if (keys.size === 0) return false
+  return existingRules.some(
+    (existing) =>
+      existing.id !== rule.id &&
+      existing.enabled &&
+      hotkeyShortcutKeys(existing).some((key) => keys.has(key)),
+  )
+}
+
+export function layerBindingConflicts(
+  binding: LayerBinding,
+  existingBindings: LayerBinding[],
+) {
+  if (!binding.keys?.length) return false
+  const chord = orderShortcutKeys(binding.keys).join("+")
+  return existingBindings.some(
+    (existing) =>
+      existing.id !== binding.id &&
+      orderShortcutKeys(existing.keys).join("+") === chord,
+  )
+}
+
+export function isBidirectionalMouseInput(input: string) {
+  return input === "wheelVertical" || input === "wheelHorizontal"
+}
+
+export type BidirectionalOperation =
+  | "volume"
+  | "brightness"
+  | "opacity"
+  | "scale"
+  | "switchApps"
+  | "switchTabs"
+  | "page"
+  | "custom"
+
+function matchesKeyStrokePair(
+  action: Action,
+  oppositeAction: Action,
+  first: string[],
+  second: string[],
+) {
+  return action.type === ActionType.ActionKeyStroke &&
+    oppositeAction.type === ActionType.ActionKeyStroke &&
+    orderShortcutKeys(action.keys).join("+") === orderShortcutKeys(first).join("+") &&
+    orderShortcutKeys(oppositeAction.keys).join("+") === orderShortcutKeys(second).join("+")
+}
+
+export function bidirectionalOperation(action: Action, oppositeAction: Action): BidirectionalOperation {
+  const amount = action.delta ?? 0
+  const oppositeAmount = oppositeAction.delta ?? 0
+  if (amount !== 0 && oppositeAmount === -amount && action.type === oppositeAction.type) {
+    if (action.type === ActionType.ActionVolume) return "volume"
+    if (action.type === ActionType.ActionBrightness) return "brightness"
+    if (
+      action.type === ActionType.ActionWindow &&
+      action.windowCommand === "opacity" &&
+      oppositeAction.windowCommand === "opacity"
+    ) return "opacity"
+    if (
+      action.type === ActionType.ActionWindow &&
+      action.windowCommand === "scale" &&
+      oppositeAction.windowCommand === "scale"
+    ) return "scale"
+  }
+  if (
+    action.type === ActionType.ActionWindow &&
+    oppositeAction.type === ActionType.ActionWindow &&
+    action.windowCommand === "previousWindow" &&
+    oppositeAction.windowCommand === "nextWindow"
+  ) return "switchApps"
+  if (matchesKeyStrokePair(action, oppositeAction, ["Ctrl", "Shift", "Tab"], ["Ctrl", "Tab"])) {
+    return "switchTabs"
+  }
+  if (matchesKeyStrokePair(action, oppositeAction, ["PageUp"], ["PageDown"])) {
+    return "page"
+  }
+  return "custom"
+}
+
+export function makeBidirectionalMouseActions(
+  operation: Exclude<BidirectionalOperation, "custom">,
+  amount: number,
+): [Action, Action] {
+  switch (operation) {
+    case "brightness":
+      return [
+        { type: ActionType.ActionBrightness, name: "亮度增加", delta: amount },
+        { type: ActionType.ActionBrightness, name: "亮度降低", delta: -amount },
+      ]
+    case "opacity":
+      return [
+        { type: ActionType.ActionWindow, name: "增加透明度", windowCommand: "opacity", delta: amount },
+        { type: ActionType.ActionWindow, name: "降低透明度", windowCommand: "opacity", delta: -amount },
+      ]
+    case "scale":
+      return [
+        { type: ActionType.ActionWindow, name: "放大窗口", windowCommand: "scale", delta: amount },
+        { type: ActionType.ActionWindow, name: "缩小窗口", windowCommand: "scale", delta: -amount },
+      ]
+    case "switchApps":
+      return [
+        { type: ActionType.ActionWindow, name: "切换上一个窗口", windowCommand: "previousWindow" },
+        { type: ActionType.ActionWindow, name: "切换下一个窗口", windowCommand: "nextWindow" },
+      ]
+    case "switchTabs":
+      return [
+        { type: ActionType.ActionKeyStroke, name: "上一个标签页", keys: ["Ctrl", "Shift", "Tab"] },
+        { type: ActionType.ActionKeyStroke, name: "下一个标签页", keys: ["Ctrl", "Tab"] },
+      ]
+    case "page":
+      return [
+        { type: ActionType.ActionKeyStroke, name: "向上翻页", keys: ["PageUp"] },
+        { type: ActionType.ActionKeyStroke, name: "向下翻页", keys: ["PageDown"] },
+      ]
+    default:
+      return [
+        { type: ActionType.ActionVolume, name: "音量增加", delta: amount },
+        { type: ActionType.ActionVolume, name: "音量降低", delta: -amount },
+      ]
+  }
+}
+
+export function defaultBidirectionalMouseActions(_input: string): [Action, Action] {
+  return makeBidirectionalMouseActions("volume", 5)
+}
+
+export function actionsForMouseInputChange(
+  previousInput: string,
+  input: string,
+  action: Action,
+  oppositeAction?: Action | null,
+): [Action, Action | undefined] {
+  const wasBidirectional = isBidirectionalMouseInput(previousInput)
+  if (isBidirectionalMouseInput(input)) {
+    if (wasBidirectional && oppositeAction) return [action, oppositeAction]
+    const [first, second] = defaultBidirectionalMouseActions(input)
+    const directions = mouseShortcutInputs(input)
+    if (previousInput === directions[0]) return [action, second]
+    if (previousInput === directions[1]) return [first, action]
+    return [first, second]
+  }
+  if (wasBidirectional && input === mouseShortcutInputs(previousInput)[1]) {
+    return [oppositeAction ?? action, undefined]
+  }
+  return [action, undefined]
+}
+
+export function mouseShortcutActionSummary(
+  input: string,
+  action: Action,
+  oppositeAction?: Action | null,
+) {
+  if (!isBidirectionalMouseInput(input) || !oppositeAction) {
+    return actionSummary(action)
+  }
+  const operation = bidirectionalOperation(action, oppositeAction)
+  const amount = Math.abs(action.delta ?? 0)
+  if (operation === "volume") return `音量 ±${amount}%`
+  if (operation === "brightness") return `亮度 ±${amount}%`
+  if (operation === "opacity") return `透明度 ±${amount}%`
+  if (operation === "scale") return `窗口缩放 ±${amount}%`
+  if (operation === "switchApps") return "切换应用"
+  if (operation === "switchTabs") return "切换标签页"
+  if (operation === "page") return "翻页"
+  const [first, second] = input === "wheelHorizontal" ? ["←", "→"] : ["↑", "↓"]
+  return `${first} ${actionSummary(action)}  ·  ${second} ${actionSummary(oppositeAction)}`
 }
 
 export function mouseShortcutLabel(binding: MouseShortcutBinding) {
@@ -262,16 +517,38 @@ export function edgeAdjustmentLabel(adjustment: EdgeAdjustmentType) {
     case EdgeAdjustmentType.EdgeAdjustmentBrightness:
       return "亮度"
     case EdgeAdjustmentType.EdgeAdjustmentRecentApps:
-      return "最近应用"
-    case EdgeAdjustmentType.EdgeAdjustmentBidirectionalKeys:
-      return "双向快捷键"
+      return "浏览最近应用"
+    case EdgeAdjustmentType.EdgeAdjustmentSwitchApps:
+      return "切换应用"
+    case EdgeAdjustmentType.EdgeAdjustmentSwitchTabs:
+      return "切换标签页"
+    case EdgeAdjustmentType.EdgeAdjustmentPage:
+      return "翻页"
+    case EdgeAdjustmentType.EdgeAdjustmentCustom:
+      return "自定义动作"
     default:
       return adjustment
   }
 }
 
+export function edgeWheelInputLabel(input: string) {
+  return input === "wheelHorizontal" ? "水平滚动" : "垂直滚动"
+}
+
+export function edgeWheelConflicts(rule: EdgeWheelRule, existingRules: EdgeWheelRule[]) {
+  if (!rule.enabled || !rule.zone || !rule.input) return false
+  return existingRules.some(
+    (existing) =>
+      existing.id !== rule.id &&
+      existing.enabled &&
+      existing.zone === rule.zone &&
+      existing.input === rule.input,
+  )
+}
+
 export function edgeStepLabel(rule: EdgeWheelRule) {
-  return rule.adjustment === EdgeAdjustmentType.EdgeAdjustmentBrightness
+  return rule.adjustment === EdgeAdjustmentType.EdgeAdjustmentBrightness ||
+    rule.adjustment === EdgeAdjustmentType.EdgeAdjustmentVolume
     ? rule.step + "%"
     : rule.step + " 步"
 }
@@ -313,11 +590,40 @@ export function gestureDirectionLabel(directions: string[] | null | undefined) {
   return (directions ?? []).map((direction) => map[direction] ?? direction).join(" ")
 }
 
+function gestureBindingKey(directions?: readonly string[] | null) {
+  return (directions ?? [])
+    .map((direction) => direction.trim().toUpperCase())
+    .filter(Boolean)
+    .filter((direction, index, values) => index === 0 || direction !== values[index - 1])
+    .join(",")
+}
+
+export function gestureBindingConflicts(
+  binding: GestureBinding,
+  existingBindings: GestureBinding[],
+) {
+  if (!binding.enabled || !binding.directions?.length) return false
+  const key = gestureBindingKey(binding.directions)
+  return existingBindings.some(
+    (existing) =>
+      existing.id !== binding.id &&
+      existing.enabled &&
+      gestureBindingKey(existing.directions) === key,
+  )
+}
+
 export function defaultAction(): Action {
   return {
     type: ActionType.ActionKeyStroke,
     name: "复制",
     keys: ["Ctrl", "C"],
+  }
+}
+
+export function emptyAction(): Action {
+  return {
+    type: ActionType.ActionKeyStroke,
+    keys: [],
   }
 }
 
@@ -329,7 +635,7 @@ export function defaultHotkey(): HotkeyRule {
   return {
     id: newID("hotkey"),
     enabled: true,
-    keys: ["Ctrl", "Alt", "K"],
+    keys: [],
     action: defaultAction(),
   }
 }
@@ -348,9 +654,6 @@ export function defaultLayer(holdMs: number): UiLayer {
       enabled: false,
       moveButton: "",
       resizeButton: "",
-      scaleWheel: false,
-      scaleStepPercent: 5,
-      wheelSteps: 1,
     },
   }
 }
@@ -359,7 +662,7 @@ export function defaultBinding(): LayerBinding {
   return {
     id: newID("binding"),
     enabled: true,
-    keys: ["S"],
+    keys: [],
     action: {
       type: ActionType.ActionKeyStroke,
       name: "向左",
@@ -395,12 +698,11 @@ export function defaultEdgeWheel(): EdgeWheelRule {
   return {
     id: newID("edge"),
     enabled: true,
-    zone: "bottomRight",
+    zone: "",
+    input: "",
     adjustment: EdgeAdjustmentType.EdgeAdjustmentVolume,
-    step: 1,
+    step: 5,
     wheelSteps: 1,
-    upKeys: [],
-    downKeys: [],
   }
 }
 

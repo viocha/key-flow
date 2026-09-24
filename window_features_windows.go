@@ -21,6 +21,8 @@ const (
 	wmClose                 = 0x0010
 	gwlExStyle              = -20
 	wsExTopmost             = 0x00000008
+	wsExLayered             = 0x00080000
+	lwaAlpha                = 0x00000002
 	swpNoSize               = 0x0001
 	swpNoMove               = 0x0002
 	swpNoZOrder             = 0x0004
@@ -29,27 +31,30 @@ const (
 )
 
 var (
-	procWindowFromPoint           = user32.NewProc("WindowFromPoint")
-	procGetAncestor               = user32.NewProc("GetAncestor")
-	procGetWindowRect             = user32.NewProc("GetWindowRect")
-	procSetWindowPos              = user32.NewProc("SetWindowPos")
-	procShowWindow                = user32.NewProc("ShowWindow")
-	procIsZoomed                  = user32.NewProc("IsZoomed")
-	procPostMessageW              = user32.NewProc("PostMessageW")
-	procGetCursorPos              = user32.NewProc("GetCursorPos")
-	procMonitorFromPoint          = user32.NewProc("MonitorFromPoint")
-	procGetMonitorInfoW           = user32.NewProc("GetMonitorInfoW")
-	procGetWindowLongPtrW         = user32.NewProc("GetWindowLongPtrW")
-	procGetSystemMetrics          = user32.NewProc("GetSystemMetrics")
-	procIsWindow                  = user32.NewProc("IsWindow")
-	procIsIconic                  = user32.NewProc("IsIconic")
-	procSetForegroundWindow       = user32.NewProc("SetForegroundWindow")
-	dxva2                         = windows.NewLazySystemDLL("dxva2.dll")
-	procGetNumberPhysicalMonitors = dxva2.NewProc("GetNumberOfPhysicalMonitorsFromHMONITOR")
-	procGetPhysicalMonitors       = dxva2.NewProc("GetPhysicalMonitorsFromHMONITOR")
-	procDestroyPhysicalMonitors   = dxva2.NewProc("DestroyPhysicalMonitors")
-	procGetMonitorBrightness      = dxva2.NewProc("GetMonitorBrightness")
-	procSetMonitorBrightness      = dxva2.NewProc("SetMonitorBrightness")
+	procWindowFromPoint            = user32.NewProc("WindowFromPoint")
+	procGetAncestor                = user32.NewProc("GetAncestor")
+	procGetWindowRect              = user32.NewProc("GetWindowRect")
+	procSetWindowPos               = user32.NewProc("SetWindowPos")
+	procShowWindow                 = user32.NewProc("ShowWindow")
+	procIsZoomed                   = user32.NewProc("IsZoomed")
+	procPostMessageW               = user32.NewProc("PostMessageW")
+	procGetCursorPos               = user32.NewProc("GetCursorPos")
+	procMonitorFromPoint           = user32.NewProc("MonitorFromPoint")
+	procGetMonitorInfoW            = user32.NewProc("GetMonitorInfoW")
+	procGetWindowLongPtrW          = user32.NewProc("GetWindowLongPtrW")
+	procSetWindowLongPtrW          = user32.NewProc("SetWindowLongPtrW")
+	procGetLayeredWindowAttributes = user32.NewProc("GetLayeredWindowAttributes")
+	procSetLayeredWindowAttributes = user32.NewProc("SetLayeredWindowAttributes")
+	procGetSystemMetrics           = user32.NewProc("GetSystemMetrics")
+	procIsWindow                   = user32.NewProc("IsWindow")
+	procIsIconic                   = user32.NewProc("IsIconic")
+	procSetForegroundWindow        = user32.NewProc("SetForegroundWindow")
+	dxva2                          = windows.NewLazySystemDLL("dxva2.dll")
+	procGetNumberPhysicalMonitors  = dxva2.NewProc("GetNumberOfPhysicalMonitorsFromHMONITOR")
+	procGetPhysicalMonitors        = dxva2.NewProc("GetPhysicalMonitorsFromHMONITOR")
+	procDestroyPhysicalMonitors    = dxva2.NewProc("DestroyPhysicalMonitors")
+	procGetMonitorBrightness       = dxva2.NewProc("GetMonitorBrightness")
+	procSetMonitorBrightness       = dxva2.NewProc("SetMonitorBrightness")
 )
 
 type rect struct {
@@ -72,8 +77,10 @@ type physicalMonitor struct {
 }
 
 var (
-	minimizedWindowsMu sync.Mutex
-	minimizedWindows   []windows.Handle
+	minimizedWindowsMu  sync.Mutex
+	minimizedWindows    []windows.Handle
+	verticalMaximizedMu sync.Mutex
+	verticalMaximized   = map[windows.Handle]struct{ original, applied rect }{}
 )
 
 type windowManipulation struct {
@@ -90,7 +97,7 @@ func pointArgument(pt point) uintptr {
 	return uintptr(uint64(uint32(pt.X)) | uint64(uint32(pt.Y))<<32)
 }
 
-func targetWindowAtPoint(pt point) windows.Handle {
+func windowAtPoint(pt point) windows.Handle {
 	hwnd, _, _ := procWindowFromPoint.Call(pointArgument(pt))
 	if hwnd == 0 {
 		return 0
@@ -99,12 +106,20 @@ func targetWindowAtPoint(pt point) windows.Handle {
 	if root != 0 {
 		hwnd = root
 	}
+	return windows.Handle(hwnd)
+}
+
+func targetWindowAtPoint(pt point) windows.Handle {
+	hwnd := windowAtPoint(pt)
+	if hwnd == 0 {
+		return 0
+	}
 	var processID uint32
-	procGetWindowThreadProcessID.Call(hwnd, uintptr(unsafe.Pointer(&processID)))
+	procGetWindowThreadProcessID.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&processID)))
 	if processID == uint32(windows.GetCurrentProcessId()) {
 		return 0
 	}
-	return windows.Handle(hwnd)
+	return hwnd
 }
 
 func getWindowRect(hwnd windows.Handle) (rect, error) {
@@ -118,7 +133,9 @@ func getWindowRect(hwnd windows.Handle) (rect, error) {
 
 func beginWindowManipulation(mode WindowManipulationMode, pt point, hwnd windows.Handle) (*windowManipulation, error) {
 	if hwnd == 0 {
-		hwnd = targetWindowAtPoint(pt)
+		// 窗口拖拽允许直接操作 Key Flow 自身窗口。普通动作仍使用
+		// targetWindowAtPoint 的进程过滤和各自动作的前台窗口回退逻辑。
+		hwnd = windowAtPoint(pt)
 	}
 	if hwnd == 0 {
 		return nil, fmt.Errorf("鼠标位置没有可操作窗口")
@@ -375,6 +392,16 @@ func executeWindowActionForWindow(action Action, hwnd windows.Handle) error {
 		} else {
 			procShowWindow.Call(uintptr(hwnd), swMaximize)
 		}
+	case "toggleVerticalMaximize":
+		return toggleVerticalMaximize(hwnd)
+	case "opacity":
+		return changeWindowOpacity(hwnd, action.Delta)
+	case "scale":
+		sign := 1
+		if action.Delta < 0 {
+			sign = -1
+		}
+		return scaleWindow(hwnd, sign, int(math.Abs(float64(action.Delta))))
 	case "alwaysOnTop":
 		style, _, _ := procGetWindowLongPtrW.Call(uintptr(hwnd), ^uintptr(19))
 		if style&wsExTopmost == 0 {
@@ -409,19 +436,62 @@ func executeWindowActionForWindow(action Action, hwnd windows.Handle) error {
 	return nil
 }
 
-func adjustSystemVolume(delta int) error {
-	if delta == 0 {
-		return nil
+func toggleVerticalMaximize(hwnd windows.Handle) error {
+	zoomed, _, _ := procIsZoomed.Call(uintptr(hwnd))
+	if zoomed != 0 {
+		procShowWindow.Call(uintptr(hwnd), swRestore)
 	}
-	key := "VolumeUp"
-	if delta < 0 {
-		key = "VolumeDown"
-		delta = -delta
+	current, err := getWindowRect(hwnd)
+	if err != nil {
+		return err
 	}
-	for i := 0; i < delta; i++ {
-		if err := sendKeyStroke([]string{key}); err != nil {
+	verticalMaximizedMu.Lock()
+	defer verticalMaximizedMu.Unlock()
+	if previous, ok := verticalMaximized[hwnd]; ok && current.Top == previous.applied.Top && current.Bottom == previous.applied.Bottom {
+		restored := current
+		restored.Top = previous.original.Top
+		restored.Bottom = previous.original.Bottom
+		if err := setWindowRect(hwnd, restored); err != nil {
 			return err
 		}
+		delete(verticalMaximized, hwnd)
+		return nil
+	}
+	center := point{X: current.Left + (current.Right-current.Left)/2, Y: current.Top + (current.Bottom-current.Top)/2}
+	monitor := monitorAtPoint(center)
+	info := monitorInfo{Size: uint32(unsafe.Sizeof(monitorInfo{}))}
+	ok, _, callErr := procGetMonitorInfoW.Call(uintptr(monitor), uintptr(unsafe.Pointer(&info)))
+	if monitor == 0 || ok == 0 {
+		return fmt.Errorf("读取显示器工作区域失败: %v", callErr)
+	}
+	applied := current
+	applied.Top = info.Work.Top
+	applied.Bottom = info.Work.Bottom
+	if err := setWindowRect(hwnd, applied); err != nil {
+		return err
+	}
+	verticalMaximized[hwnd] = struct{ original, applied rect }{current, applied}
+	return nil
+}
+
+func changeWindowOpacity(hwnd windows.Handle, delta int) error {
+	style, _, _ := procGetWindowLongPtrW.Call(uintptr(hwnd), ^uintptr(19))
+	alpha := uint8(255)
+	var colorKey, flags uint32
+	if style&wsExLayered != 0 {
+		ok, _, _ := procGetLayeredWindowAttributes.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&colorKey)), uintptr(unsafe.Pointer(&alpha)), uintptr(unsafe.Pointer(&flags)))
+		if ok == 0 || flags&lwaAlpha == 0 {
+			alpha = 255
+		}
+	} else {
+		procSetWindowLongPtrW.Call(uintptr(hwnd), ^uintptr(19), style|wsExLayered)
+	}
+	percent := int(math.Round(float64(alpha) * 100 / 255))
+	percent = max(20, min(100, percent-delta))
+	target := uint8(math.Round(float64(percent) * 255 / 100))
+	ok, _, callErr := procSetLayeredWindowAttributes.Call(uintptr(hwnd), uintptr(colorKey), uintptr(target), uintptr(flags|lwaAlpha))
+	if ok == 0 {
+		return fmt.Errorf("调整窗口透明度失败: %v", callErr)
 	}
 	return nil
 }

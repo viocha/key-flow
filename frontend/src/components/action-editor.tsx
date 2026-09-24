@@ -34,6 +34,7 @@ const actionTypeItems = {
   command: "运行命令 / 脚本",
   edit: "编辑操作",
   window: "窗口操作",
+  mouse: "鼠标操作",
   volume: "音量",
   brightness: "亮度",
   sequence: "动作序列",
@@ -57,7 +58,23 @@ const windowCommandItems = {
   maximize: "最大化窗口",
   restore: "恢复窗口",
   toggleMaximize: "切换最大化",
+  toggleVerticalMaximize: "切换垂直最大化",
+  opacity: "更改窗口透明度",
+  scale: "窗口中心缩放",
   alwaysOnTop: "切换置顶",
+}
+
+const mouseCommandItems = {
+  leftClick: "左键单击",
+  doubleClick: "左键双击",
+  rightClick: "右键单击",
+  middleClick: "中键单击",
+  backClick: "后退键单击",
+  forwardClick: "前进键单击",
+  wheelUp: "向上滚动",
+  wheelDown: "向下滚动",
+  wheelLeft: "向左滚动",
+  wheelRight: "向右滚动",
 }
 
 const commandArgsModeItems = {
@@ -65,15 +82,68 @@ const commandArgsModeItems = {
   list: "参数列表",
 }
 
+function isAdjustableAmount(action: Action) {
+  return action.type === ActionType.ActionVolume ||
+    action.type === ActionType.ActionBrightness ||
+    (action.type === ActionType.ActionWindow &&
+      (action.windowCommand === "opacity" || action.windowCommand === "scale")) ||
+    (action.type === ActionType.ActionMouse && action.mouseCommand?.startsWith("wheel"))
+}
+
+function matchesPreset(action: Action, preset: ActionPreset) {
+  const adjustable = isAdjustableAmount(preset.action)
+  if (!adjustable && action.name !== preset.name && !action.name?.startsWith(preset.name + " ")) {
+    return false
+  }
+  const value = { ...action }
+  const template = { ...preset.action }
+  delete value.name
+  delete template.name
+  delete value.delayMs
+  delete template.delayMs
+  if (adjustable) {
+    delete value.delta
+    delete template.delta
+  }
+  if (template.type === ActionType.ActionWindow && template.windowCommand === "alwaysOnTop") {
+    delete value.windowBorderColor
+    delete value.windowBorderSize
+    delete template.windowBorderColor
+    delete template.windowBorderSize
+  }
+  return JSON.stringify(value) === JSON.stringify(template)
+}
+
+function presetAmountField(action: Action) {
+  if (action.type === ActionType.ActionWindow && action.windowCommand === "opacity") {
+    return { label: "透明度变化", max: 100, unit: "%", signed: true }
+  }
+  if (action.type === ActionType.ActionWindow && action.windowCommand === "scale") {
+    return { label: "缩放变化", max: 100, unit: "%", signed: true }
+  }
+  if (action.type === ActionType.ActionBrightness) {
+    return { label: "亮度变化", max: 100, unit: "%", signed: true }
+  }
+  if (action.type === ActionType.ActionVolume) {
+    return { label: "音量变化", max: 100, unit: "%", signed: true }
+  }
+  if (action.type === ActionType.ActionMouse && action.mouseCommand?.startsWith("wheel")) {
+    return { label: "滚动格数", max: 20, unit: "格", signed: false }
+  }
+  return null
+}
+
 export function ActionEditor({
   action,
   presets,
   onChange,
+  label = "动作",
   depth = 0,
 }: {
   action: Action
   presets: ActionPreset[]
   onChange: (action: Action) => void
+  label?: string
   depth?: number
 }) {
   const fieldID = useId()
@@ -88,9 +158,7 @@ export function ActionEditor({
     [presets],
   )
   const groupNames = useMemo(() => Object.keys(groups), [groups])
-  const matchingPreset = presets.find(
-    (preset) => preset.name === action.name && preset.action.type === action.type,
-  )
+  const matchingPreset = presets.find((preset) => matchesPreset(action, preset))
   const [presetGroup, setPresetGroup] = useState(
     matchingPreset?.group ?? groupNames[0] ?? "",
   )
@@ -130,6 +198,11 @@ export function ActionEditor({
   )
   const selectedPreset =
     matchingPreset?.group === presetGroup ? matchingPreset.id : null
+  const amountField = presetAmountField(action)
+  const setDelta = (value: number) => {
+    const delta = Math.round(value)
+    if (delta !== 0) onChange({ ...action, delta })
+  }
 
   const setType = (type: ActionType) => {
     switch (type) {
@@ -154,8 +227,11 @@ export function ActionEditor({
       case ActionType.ActionWindow:
         onChange({ type, windowCommand: "close" })
         break
+      case ActionType.ActionMouse:
+        onChange({ type, mouseCommand: "leftClick" })
+        break
       case ActionType.ActionVolume:
-        onChange({ type, delta: 1 })
+        onChange({ type, delta: 5 })
         break
       case ActionType.ActionBrightness:
         onChange({ type, delta: 5 })
@@ -171,7 +247,7 @@ export function ActionEditor({
   return (
     <FieldGroup>
       <Field>
-        <FieldLabel>动作</FieldLabel>
+        <FieldLabel>{label}</FieldLabel>
         <Tabs
           value={editorMode}
           onValueChange={(value) =>
@@ -251,6 +327,7 @@ export function ActionEditor({
                   </SelectItem>
                   <SelectItem value={ActionType.ActionEdit}>编辑操作</SelectItem>
                   <SelectItem value={ActionType.ActionWindow}>窗口操作</SelectItem>
+                  <SelectItem value={ActionType.ActionMouse}>鼠标操作</SelectItem>
                   <SelectItem value={ActionType.ActionVolume}>音量</SelectItem>
                   <SelectItem value={ActionType.ActionBrightness}>亮度</SelectItem>
                   {depth < 3 && (
@@ -264,6 +341,27 @@ export function ActionEditor({
           </TabsContent>
         </Tabs>
       </Field>
+
+      {editorMode === "preset" && amountField && (
+        <Field>
+          <FieldLabel htmlFor={fieldID + "-preset-amount"}>
+            {amountField.label}
+          </FieldLabel>
+          <div className="flex items-center gap-2">
+            <NumberInput
+              id={fieldID + "-preset-amount"}
+              min={amountField.signed ? -amountField.max : 1}
+              max={amountField.max}
+              step={1}
+              value={amountField.signed ? (action.delta ?? 1) : Math.abs(action.delta ?? 1)}
+              onValueChange={setDelta}
+            />
+            <span className="shrink-0 text-sm text-muted-foreground">
+              {amountField.unit}
+            </span>
+          </div>
+        </Field>
+      )}
 
       {editorMode === "custom" &&
         action.type === ActionType.ActionKeyStroke && (
@@ -476,6 +574,9 @@ export function ActionEditor({
                       windowBorderSize: action.windowBorderSize || 2,
                     }
                   : {}),
+                ...(value === "opacity" || value === "scale"
+                  ? { delta: action.delta || 5 }
+                  : {}),
               })
             }}
           >
@@ -536,22 +637,87 @@ export function ActionEditor({
         )}
 
       {editorMode === "custom" &&
-        action.type === ActionType.ActionVolume && (
+        action.type === ActionType.ActionWindow &&
+        (action.windowCommand === "opacity" || action.windowCommand === "scale") && (
+          <Field>
+            <FieldLabel htmlFor={fieldID + "-window-delta"}>
+              {action.windowCommand === "opacity" ? "透明度变化" : "缩放变化"}
+            </FieldLabel>
+            <NumberInput
+              id={fieldID + "-window-delta"}
+              min={-100}
+              max={100}
+              value={action.delta ?? 5}
+              onValueChange={setDelta}
+            />
+            <FieldDescription>
+              {action.windowCommand === "opacity"
+                ? "正数增加透明度，负数降低透明度"
+                : "正数放大，负数缩小"}
+            </FieldDescription>
+          </Field>
+        )}
+
+      {editorMode === "custom" && action.type === ActionType.ActionMouse && (
         <Field>
-          <FieldLabel htmlFor={fieldID + "-volume"}>变化步数</FieldLabel>
-          <NumberInput
-            id={fieldID + "-volume"}
-            min={-20}
-            max={20}
-            value={action.delta ?? 1}
-            onValueChange={(delta) =>
+          <FieldLabel>鼠标操作</FieldLabel>
+          <Select
+            items={mouseCommandItems}
+            value={action.mouseCommand ?? "leftClick"}
+            onValueChange={(value) => {
+              if (!value) return
               onChange({
                 ...action,
-                delta,
+                mouseCommand: value,
+                ...(value.startsWith("wheel")
+                  ? { delta: action.delta || 1 }
+                  : {}),
               })
-            }
+            }}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent alignItemWithTrigger={false}>
+              <SelectGroup>
+                {Object.entries(mouseCommandItems).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </Field>
+      )}
+
+      {editorMode === "custom" &&
+        action.type === ActionType.ActionMouse &&
+        action.mouseCommand?.startsWith("wheel") && (
+          <Field>
+            <FieldLabel htmlFor={fieldID + "-mouse-wheel-steps"}>滚动格数</FieldLabel>
+            <NumberInput
+              id={fieldID + "-mouse-wheel-steps"}
+              min={1}
+              max={20}
+              value={action.delta ?? 1}
+              onValueChange={setDelta}
+            />
+          </Field>
+        )}
+
+      {editorMode === "custom" &&
+        action.type === ActionType.ActionVolume && (
+        <Field>
+          <FieldLabel htmlFor={fieldID + "-volume"}>音量变化</FieldLabel>
+          <NumberInput
+            id={fieldID + "-volume"}
+            min={-100}
+            max={100}
+            value={action.delta ?? 5}
+            onValueChange={setDelta}
           />
-          <FieldDescription>正数增加，负数降低；1 步使用系统音量键的一次增量</FieldDescription>
+          <FieldDescription>正数增加，负数降低，单位 %</FieldDescription>
         </Field>
       )}
 
@@ -564,12 +730,7 @@ export function ActionEditor({
             min={-100}
             max={100}
             value={action.delta ?? 5}
-            onValueChange={(delta) =>
-              onChange({
-                ...action,
-                delta,
-              })
-            }
+            onValueChange={setDelta}
           />
           <FieldDescription>百分比；正数增加，负数降低</FieldDescription>
         </Field>

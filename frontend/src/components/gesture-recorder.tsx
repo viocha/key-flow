@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react"
 import type { GesturePoint } from "../../bindings/key-flow"
 
 import { GestureEndpointArrow } from "@/components/gesture-endpoint-arrow"
+import { useInputCapture } from "@/hooks/use-input-capture"
 import { gestureDirectionLabel } from "@/lib/app-model"
 
 type RawPoint = {
@@ -23,6 +24,7 @@ export function GestureRecorder({
     points: RawPoint[]
   } | null>(null)
   const boxRef = useRef<HTMLDivElement>(null)
+  const { begin: beginInputCapture, end: endInputCapture } = useInputCapture()
 
   const visiblePreview = useMemo(() => {
     if (!drawing || !boxRef.current) return preview ?? []
@@ -60,6 +62,8 @@ export function GestureRecorder({
         className="relative h-48 overflow-hidden rounded-lg border bg-muted/30 select-none"
         style={{ touchAction: "none" }}
         onContextMenu={(event) => event.preventDefault()}
+        onPointerEnter={beginInputCapture}
+        onPointerLeave={endInputCapture}
         onPointerDown={(event) => {
           event.preventDefault()
           event.currentTarget.setPointerCapture(event.pointerId)
@@ -96,7 +100,10 @@ export function GestureRecorder({
             return current
           })
         }}
-        onPointerCancel={() => setDrawing(null)}
+        onPointerCancel={() => {
+          setDrawing(null)
+          endInputCapture()
+        }}
       >
         {visiblePreview.length >= 2 ? (
           <>

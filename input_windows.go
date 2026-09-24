@@ -4,7 +4,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
 	"runtime"
 	"strconv"
@@ -35,6 +34,7 @@ const (
 	wmMButtonDown = 0x0207
 	wmMButtonUp   = 0x0208
 	wmMouseWheel  = 0x020A
+	wmMouseHWheel = 0x020E
 	wmXButtonDown = 0x020B
 	wmXButtonUp   = 0x020C
 
@@ -93,6 +93,8 @@ const (
 	mouseeventfMiddleUp   = 0x0040
 	mouseeventfXDown      = 0x0080
 	mouseeventfXUp        = 0x0100
+	mouseeventfWheel      = 0x0800
+	mouseeventfHWheel     = 0x1000
 
 	keyRunnerInputMarker = uintptr(0x4B52554E)
 )
@@ -422,9 +424,7 @@ func (s *windowsInputState) handleKeyboard(message uint32, vk uint32) bool {
 		return false
 	}
 
-	// Editing and shortcut recording inside Key Flow must not trigger
-	// already-active global rules.
-	if ownProcessForeground() {
+	if s.engine.InputCaptureActive() {
 		return false
 	}
 
@@ -513,7 +513,7 @@ func (s *windowsInputState) handleMouseLegacy(message uint32, mouseData uint32) 
 	if !config.enabled {
 		return false
 	}
-	if ownProcessForeground() {
+	if s.engine.InputCaptureActive() {
 		return false
 	}
 	if !isDown {
@@ -576,17 +576,17 @@ func (s *windowsInputState) finishTriggerLocked() {
 
 func (s *windowsInputState) currentChordLocked(mainKey string) string {
 	keys := make([]string, 0, 5)
+	if s.modifierDownLocked("Win") {
+		keys = append(keys, "Win")
+	}
 	if s.modifierDownLocked("Ctrl") {
 		keys = append(keys, "Ctrl")
-	}
-	if s.modifierDownLocked("Shift") {
-		keys = append(keys, "Shift")
 	}
 	if s.modifierDownLocked("Alt") {
 		keys = append(keys, "Alt")
 	}
-	if s.modifierDownLocked("Win") {
-		keys = append(keys, "Win")
+	if s.modifierDownLocked("Shift") {
+		keys = append(keys, "Shift")
 	}
 	keys = append(keys, mainKey)
 	chord, _ := canonicalChord(keys)
@@ -618,7 +618,7 @@ func (s *windowsInputState) suppressedModifierNamesLocked() []string {
 	}
 
 	modifiers := make([]string, 0, len(seen))
-	for _, name := range []string{"Ctrl", "Shift", "Alt", "Win"} {
+	for _, name := range []string{"Win", "Ctrl", "Alt", "Shift"} {
 		if seen[name] {
 			modifiers = append(modifiers, name)
 		}
@@ -853,6 +853,8 @@ func executePlatformActionContext(action Action, context ActionContext, keyInter
 			return executeWindowActionForWindow(action, windows.Handle(context.Window))
 		}
 		return executeWindowAction(action)
+	case ActionMouse:
+		return executeMouseAction(action)
 	case ActionVolume:
 		return adjustSystemVolume(action.Delta)
 	case ActionBrightness:
@@ -1073,6 +1075,39 @@ func sendMouseButton(downFlag, upFlag uint32, mouseData uint32) error {
 	return nil
 }
 
+func executeMouseAction(action Action) error {
+	switch action.MouseCommand {
+	case "leftClick", "doubleClick":
+		if err := sendMouseButton(mouseeventfLeftDown, mouseeventfLeftUp, 0); err != nil {
+			return err
+		}
+		if action.MouseCommand == "doubleClick" {
+			return sendMouseButton(mouseeventfLeftDown, mouseeventfLeftUp, 0)
+		}
+		return nil
+	case "rightClick":
+		return sendMouseButton(mouseeventfRightDown, mouseeventfRightUp, 0)
+	case "middleClick":
+		return sendMouseButton(mouseeventfMiddleDown, mouseeventfMiddleUp, 0)
+	case "backClick":
+		return sendMouseButton(mouseeventfXDown, mouseeventfXUp, 1)
+	case "forwardClick":
+		return sendMouseButton(mouseeventfXDown, mouseeventfXUp, 2)
+	case "wheelUp", "wheelDown", "wheelLeft", "wheelRight":
+		delta := int32(action.Delta * 120)
+		flag := uint32(mouseeventfWheel)
+		if action.MouseCommand == "wheelDown" || action.MouseCommand == "wheelLeft" {
+			delta = -delta
+		}
+		if action.MouseCommand == "wheelLeft" || action.MouseCommand == "wheelRight" {
+			flag = mouseeventfHWheel
+		}
+		return sendMouseButtonEvent(flag, uint32(delta))
+	default:
+		return fmt.Errorf("未知鼠标命令: %s", action.MouseCommand)
+	}
+}
+
 func shellOpen(target string) error {
 	operation, _ := windows.UTF16PtrFromString("open")
 	targetPtr, err := windows.UTF16PtrFromString(target)
@@ -1106,16 +1141,6 @@ func captureActionContext(hwnd windows.Handle, pt point, suppressedModifiers ...
 		TriggeredAt:         time.Now(),
 		SuppressedModifiers: append([]string(nil), suppressedModifiers...),
 	}
-}
-
-func ownProcessForeground() bool {
-	hwnd, _, _ := procGetForegroundWindow.Call()
-	if hwnd == 0 {
-		return false
-	}
-	var processID uint32
-	procGetWindowThreadProcessID.Call(hwnd, uintptr(unsafe.Pointer(&processID)))
-	return processID == uint32(os.Getpid())
 }
 
 func isExtendedVK(vk uint16) bool {

@@ -83,7 +83,10 @@ import {
   activeProfile,
   defaultGestureGroup,
   defaultLayer,
+  hotkeyConflicts,
   hotkeyInputKeys,
+  layerBindingConflicts,
+  mouseShortcutActionSummary,
   normalizeConfig,
   triggerLabel,
   type UiConfig,
@@ -290,6 +293,7 @@ function App() {
 
   const saveHotkey = (rule: HotkeyRule) => {
     updateProfile((current) => {
+      if (hotkeyConflicts(rule, current.hotkeys)) return current
       const exists = current.hotkeys.some((item) => item.id === rule.id)
       return {
         ...current,
@@ -335,6 +339,7 @@ function App() {
       ...current,
       layers: current.layers.map((layer) => {
         if (layer.id !== layerId) return layer
+        if (layerBindingConflicts(binding, layer.bindings)) return layer
         const exists = layer.bindings.some((item) => item.id === binding.id)
         return {
           ...layer,
@@ -550,8 +555,7 @@ function App() {
                         layer.mouseShortcuts.length +
                         (layer.windowOperations.enabled
                           ? (layer.windowOperations.moveButton ? 1 : 0) +
-                            (layer.windowOperations.resizeButton ? 1 : 0) +
-                            (layer.windowOperations.scaleWheel ? 1 : 0)
+                            (layer.windowOperations.resizeButton ? 1 : 0)
                           : 0)}
                     </SidebarMenuBadge>
                   </SidebarMenuItem>
@@ -715,6 +719,7 @@ function App() {
                 enabled={profile.edgeWheelsEnabled}
                 marginPx={profile.edgeWheelMarginPx}
                 rules={profile.edgeWheels}
+                presets={presets}
                 onEnabledChange={(edgeWheelsEnabled) =>
                   updateProfile((current) => ({
                     ...current,
@@ -755,6 +760,7 @@ function App() {
       <ShortcutDialog
         open={shortcutDialog.open}
         rule={shortcutDialog.open ? shortcutDialog.rule : undefined}
+        existingRules={profile.hotkeys}
         presets={presets}
         onClose={() => setShortcutDialog({ open: false })}
         onSave={saveHotkey}
@@ -769,6 +775,11 @@ function App() {
       <BindingDialog
         open={bindingDialog.open}
         binding={bindingDialog.open ? bindingDialog.binding : undefined}
+        existingBindings={
+          bindingDialog.open
+            ? profile.layers.find((layer) => layer.id === bindingDialog.layerId)?.bindings ?? []
+            : []
+        }
         presets={presets}
         onClose={() => setBindingDialog({ open: false })}
         onSave={(binding) => {
@@ -820,7 +831,7 @@ function HotkeysPanel({
               aria-label="启用通用快捷键"
             />
           </div>
-          <AddButton onClick={onAdd}>添加快捷键</AddButton>
+          <AddButton onClick={onAdd}>添加</AddButton>
         </div>
       }
     >
@@ -848,7 +859,13 @@ function HotkeysPanel({
                   <KeyChord keys={hotkeyInputKeys(rule)} />
                 </div>
                 <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                  {actionSummary(rule.action)}
+                  {rule.mouseInput
+                    ? mouseShortcutActionSummary(
+                        rule.mouseInput,
+                        rule.action,
+                        rule.oppositeAction,
+                      )
+                    : actionSummary(rule.action)}
                 </div>
                 {!rule.enabled && <Badge variant="secondary" className="ml-auto shrink-0">已禁用</Badge>}
               </EditableListRow>
@@ -916,7 +933,7 @@ function LayerPanel({
     >
       <div className="flex items-center justify-between gap-3">
         <div className="text-sm font-medium">按键映射</div>
-        <AddButton onClick={onAddBinding}>添加映射</AddButton>
+        <AddButton onClick={onAddBinding}>添加</AddButton>
       </div>
 
       <Card className="gap-0 py-0">
@@ -924,7 +941,7 @@ function LayerPanel({
               {layer.bindings.length === 0 ? (
                 <Empty className="min-h-40">
                   <EmptyHeader>
-                    <EmptyTitle>暂无映射</EmptyTitle>
+                    <EmptyTitle>暂无按键映射</EmptyTitle>
                   </EmptyHeader>
                 </Empty>
               ) : (

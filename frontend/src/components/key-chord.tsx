@@ -1,4 +1,7 @@
+import { CommandIcon } from "lucide-react"
+
 import { Kbd, KbdGroup } from "@/components/ui/kbd"
+import { orderShortcutKeys } from "@/lib/app-model"
 
 export function KeyChord({
   keys,
@@ -13,8 +16,17 @@ export function KeyChord({
 
   return (
     <KbdGroup>
-      {keys.map((key) => (
-        <Kbd key={key}>{displayKey(key)}</Kbd>
+      {orderShortcutKeys(keys).map((key) => (
+        <Kbd key={key}>
+          {key === "Win" ? (
+            <>
+              <CommandIcon aria-hidden="true" />
+              <span className="sr-only">Win</span>
+            </>
+          ) : (
+            displayKey(key)
+          )}
+        </Kbd>
       ))}
     </KbdGroup>
   )

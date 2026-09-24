@@ -30,6 +30,12 @@ func gestureBindingLabel(binding GestureBinding) string {
 			return "恢复窗口"
 		case "toggleMaximize":
 			return "切换最大化"
+		case "toggleVerticalMaximize":
+			return "切换垂直最大化"
+		case "opacity":
+			return "调整窗口透明度"
+		case "scale":
+			return "窗口中心缩放"
 		case "alwaysOnTop":
 			return "切换置顶"
 		}

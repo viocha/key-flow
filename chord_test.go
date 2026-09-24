@@ -3,12 +3,12 @@ package main
 import "testing"
 
 func TestCanonicalChordOrdersModifiers(t *testing.T) {
-	got, err := canonicalChord([]string{"Shift", "K", "Ctrl"})
+	got, err := canonicalChord([]string{"Shift", "K", "Ctrl", "Win", "Alt"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "Ctrl+Shift+K" {
-		t.Fatalf("canonicalChord() = %q, want %q", got, "Ctrl+Shift+K")
+	if got != "Win+Ctrl+Alt+Shift+K" {
+		t.Fatalf("canonicalChord() = %q, want %q", got, "Win+Ctrl+Alt+Shift+K")
 	}
 }
 
@@ -35,12 +35,12 @@ func TestCanonicalChordRejectsUnsupportedKey(t *testing.T) {
 }
 
 func TestMouseShortcutKeyOrdersModifiers(t *testing.T) {
-	got, err := mouseShortcutKey([]string{"Alt", "Shift", "controlleft"}, "left")
+	got, err := mouseShortcutKey([]string{"Alt", "Shift", "controlleft", "Win"}, "left")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "Ctrl+Shift+Alt+left" {
-		t.Fatalf("mouseShortcutKey() = %q, want %q", got, "Ctrl+Shift+Alt+left")
+	if got != "Win+Ctrl+Alt+Shift+left" {
+		t.Fatalf("mouseShortcutKey() = %q, want %q", got, "Win+Ctrl+Alt+Shift+left")
 	}
 }
 

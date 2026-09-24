@@ -4,6 +4,18 @@ package main
 
 import "testing"
 
+func TestHorizontalWheelDirection(t *testing.T) {
+	if got := inputForWheel(wmMouseHWheel, 1); got != "wheelRight" {
+		t.Fatalf("正向横向滚动 = %s", got)
+	}
+	if got := inputForWheel(wmMouseHWheel, -1); got != "wheelLeft" {
+		t.Fatalf("反向横向滚动 = %s", got)
+	}
+	if got := inputForWheel(wmMouseWheel, 1); got != "wheelUp" {
+		t.Fatalf("垂直滚动 = %s", got)
+	}
+}
+
 func TestKeyStrokeInputsWinShortcut(t *testing.T) {
 	inputs, err := keyStrokeInputs("Win+E", nil, func(uint16) bool { return false })
 	if err != nil {
@@ -72,7 +84,7 @@ func TestSuppressedModifierNamesLocked(t *testing.T) {
 	}
 
 	modifiers := state.suppressedModifierNamesLocked()
-	if len(modifiers) != 2 || modifiers[0] != "Shift" || modifiers[1] != "Alt" {
-		t.Fatalf("suppressed modifiers = %v, want [Shift Alt]", modifiers)
+	if len(modifiers) != 2 || modifiers[0] != "Alt" || modifiers[1] != "Shift" {
+		t.Fatalf("suppressed modifiers = %v, want [Alt Shift]", modifiers)
 	}
 }

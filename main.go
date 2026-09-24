@@ -95,6 +95,7 @@ func main() {
 			})
 			manager = current
 			current.RegisterHook(events.Common.WindowClosing, func(*application.WindowEvent) {
+				engine.ResetInputCapture()
 				managerMu.Lock()
 				if manager == current {
 					manager = nil

@@ -108,6 +108,31 @@ func TestCompileConfigUsesActiveProfileOnly(t *testing.T) {
 	}
 }
 
+func TestCompileConfigAcceptsExistingModifierOrder(t *testing.T) {
+	config := defaultConfig()
+	config.Profiles[0].Hotkeys = []HotkeyRule{
+		testHotkey("old-key-order", true, "Ctrl", "Shift", "Win", "K"),
+		{
+			ID:         "old-mouse-order",
+			Enabled:    true,
+			MouseInput: "left",
+			Modifiers:  []string{"Ctrl", "Alt", "Win"},
+			Action:     Action{Type: ActionKeyStroke, Keys: []string{"Ctrl", "C"}},
+		},
+	}
+
+	compiled, err := compileConfig(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := compiled.hotkeys["Win+Ctrl+Shift+K"]; !ok {
+		t.Fatal("旧顺序的键盘快捷键未按新顺序编译")
+	}
+	if _, ok := compiled.mouseHotkeys["Win+Ctrl+Alt+left"]; !ok {
+		t.Fatal("旧顺序的鼠标快捷键未按新顺序编译")
+	}
+}
+
 func TestCompileConfigSupportsGlobalMouseHotkey(t *testing.T) {
 	config := defaultConfig()
 	config.Profiles[0].Hotkeys = []HotkeyRule{{
@@ -131,6 +156,69 @@ func TestCompileConfigSupportsGlobalMouseHotkey(t *testing.T) {
 	}
 	if got := compiled.mouseHotkeys["Alt+wheelUp"].wheelSteps; got != 1 {
 		t.Fatalf("global wheel steps = %d, want 1", got)
+	}
+}
+
+func TestCompileConfigExpandsBidirectionalMouseShortcuts(t *testing.T) {
+	config := defaultConfig()
+	globalRight := Action{Type: ActionKeyStroke, Keys: []string{"Ctrl", "Tab"}}
+	layerDown := Action{Type: ActionVolume, Delta: -2}
+	config.Profiles[0].Hotkeys = []HotkeyRule{{
+		ID: "horizontal", Enabled: true, MouseInput: "wheelHorizontal", WheelSteps: 2,
+		Modifiers:      []string{"Ctrl"},
+		Action:         Action{Type: ActionKeyStroke, Keys: []string{"Ctrl", "Shift", "Tab"}},
+		OppositeAction: &globalRight,
+	}}
+	layer := testLayer("caps", "CapsLock", "CapsLock", true)
+	layer.MouseShortcuts = []MouseShortcutBinding{{
+		Input: "wheelVertical", Enabled: true, WheelSteps: 3,
+		Action: Action{Type: ActionVolume, Delta: 2}, OppositeAction: &layerDown,
+	}}
+	config.Profiles[0].Layers = []TriggerLayer{layer}
+
+	compiled, err := compileConfig(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := compiled.mouseHotkeys["Ctrl+wheelLeft"]; got.wheelSteps != 2 || got.action.Keys[2] != "Tab" {
+		t.Fatalf("左滚轮动作 = %#v", got)
+	}
+	if got := compiled.mouseHotkeys["Ctrl+wheelRight"]; got.wheelSteps != 2 || len(got.action.Keys) != 2 {
+		t.Fatalf("右滚轮动作 = %#v", got)
+	}
+	if got := compiled.layers["CapsLock"].mouseShortcuts["wheelUp"]; got.wheelSteps != 3 || got.action.Delta != 2 {
+		t.Fatalf("上滚轮动作 = %#v", got)
+	}
+	if got := compiled.layers["CapsLock"].mouseShortcuts["wheelDown"]; got.wheelSteps != 3 || got.action.Delta != -2 {
+		t.Fatalf("下滚轮动作 = %#v", got)
+	}
+}
+
+func TestValidateConfigRejectsBidirectionalMouseConflict(t *testing.T) {
+	config := defaultConfig()
+	other := Action{Type: ActionVolume, Delta: -1}
+	config.Profiles[0].Hotkeys = []HotkeyRule{
+		{ID: "both", Enabled: true, MouseInput: "wheelVertical", WheelSteps: 1,
+			Modifiers: []string{"Ctrl"}, Action: Action{Type: ActionVolume, Delta: 1}, OppositeAction: &other},
+		{ID: "down", Enabled: true, MouseInput: "wheelDown", WheelSteps: 1,
+			Modifiers: []string{"Ctrl"}, Action: Action{Type: ActionVolume, Delta: -1}},
+	}
+	if err := validateConfig(config); err == nil || !strings.Contains(err.Error(), "快捷键冲突") {
+		t.Fatalf("双向与单向冲突未检出: %v", err)
+	}
+}
+
+func TestValidateConfigAcceptsBidirectionalLayerScaleShortcut(t *testing.T) {
+	config := defaultConfig()
+	opposite := Action{Type: ActionWindow, WindowCommand: "scale", Delta: -5}
+	layer := testLayer("caps", "CapsLock", "CapsLock", true)
+	layer.MouseShortcuts = []MouseShortcutBinding{{
+		Input: "wheelVertical", Enabled: true, WheelSteps: 1,
+		Action: Action{Type: ActionWindow, WindowCommand: "scale", Delta: 5}, OppositeAction: &opposite,
+	}}
+	config.Profiles[0].Layers = []TriggerLayer{layer}
+	if err := validateConfig(config); err != nil {
+		t.Fatalf("窗口中心缩放鼠标快捷键应有效: %v", err)
 	}
 }
 
@@ -262,10 +350,9 @@ func TestCompileConfigSeparatesMouseShortcutsAndWindowOperations(t *testing.T) {
 		},
 	}
 	layer.WindowOperations = WindowPointerOperations{
-		Enabled:          true,
-		MoveButton:       "left",
-		ResizeButton:     "right",
-		ScaleStepPercent: 5,
+		Enabled:      true,
+		MoveButton:   "left",
+		ResizeButton: "right",
 	}
 	config.Profiles[0].Layers = []TriggerLayer{layer}
 
@@ -342,9 +429,8 @@ func TestValidateConfigRejectsMouseShortcutWindowOperationConflict(t *testing.T)
 		},
 	}
 	layer.WindowOperations = WindowPointerOperations{
-		Enabled:          true,
-		MoveButton:       "left",
-		ScaleStepPercent: 5,
+		Enabled:    true,
+		MoveButton: "left",
 	}
 	config.Profiles[0].Layers = []TriggerLayer{layer}
 
@@ -363,9 +449,8 @@ func TestDisabledLayerBindingsDoNotCompileOrReserveWindowInput(t *testing.T) {
 		Action: Action{Type: ActionKeyStroke, Keys: []string{"Ctrl", "Tab"}},
 	}}
 	layer.WindowOperations = WindowPointerOperations{
-		Enabled:          true,
-		MoveButton:       "left",
-		ScaleStepPercent: 5,
+		Enabled:    true,
+		MoveButton: "left",
 	}
 	config.Profiles[0].Layers = []TriggerLayer{layer}
 

@@ -10,6 +10,7 @@ const (
 	ActionSequence   ActionType = "sequence"
 	ActionEdit       ActionType = "edit"
 	ActionWindow     ActionType = "window"
+	ActionMouse      ActionType = "mouse"
 	ActionVolume     ActionType = "volume"
 	ActionBrightness ActionType = "brightness"
 )
@@ -29,19 +30,21 @@ type Action struct {
 	DelayMS           int        `json:"delayMs,omitempty"`
 	EditCommand       string     `json:"editCommand,omitempty"`
 	WindowCommand     string     `json:"windowCommand,omitempty"`
+	MouseCommand      string     `json:"mouseCommand,omitempty"`
 	WindowBorderColor string     `json:"windowBorderColor,omitempty"`
 	WindowBorderSize  int        `json:"windowBorderSize,omitempty"`
 	Delta             int        `json:"delta,omitempty"`
 }
 
 type HotkeyRule struct {
-	ID         string   `json:"id"`
-	Enabled    bool     `json:"enabled"`
-	Keys       []string `json:"keys,omitempty"`
-	MouseInput string   `json:"mouseInput,omitempty"`
-	WheelSteps int      `json:"wheelSteps,omitempty"`
-	Modifiers  []string `json:"modifiers,omitempty"`
-	Action     Action   `json:"action"`
+	ID             string   `json:"id"`
+	Enabled        bool     `json:"enabled"`
+	Keys           []string `json:"keys,omitempty"`
+	MouseInput     string   `json:"mouseInput,omitempty"`
+	WheelSteps     int      `json:"wheelSteps,omitempty"`
+	Modifiers      []string `json:"modifiers,omitempty"`
+	Action         Action   `json:"action"`
+	OppositeAction *Action  `json:"oppositeAction,omitempty"`
 }
 
 type LayerBinding struct {
@@ -52,20 +55,18 @@ type LayerBinding struct {
 }
 
 type MouseShortcutBinding struct {
-	Input      string   `json:"input"`
-	Enabled    bool     `json:"enabled"`
-	WheelSteps int      `json:"wheelSteps,omitempty"`
-	Modifiers  []string `json:"modifiers,omitempty"`
-	Action     Action   `json:"action"`
+	Input          string   `json:"input"`
+	Enabled        bool     `json:"enabled"`
+	WheelSteps     int      `json:"wheelSteps,omitempty"`
+	Modifiers      []string `json:"modifiers,omitempty"`
+	Action         Action   `json:"action"`
+	OppositeAction *Action  `json:"oppositeAction,omitempty"`
 }
 
 type WindowPointerOperations struct {
-	Enabled          bool   `json:"enabled"`
-	MoveButton       string `json:"moveButton,omitempty"`
-	ResizeButton     string `json:"resizeButton,omitempty"`
-	ScaleWheel       bool   `json:"scaleWheel"`
-	ScaleStepPercent int    `json:"scaleStepPercent"`
-	WheelSteps       int    `json:"wheelSteps"`
+	Enabled      bool   `json:"enabled"`
+	MoveButton   string `json:"moveButton,omitempty"`
+	ResizeButton string `json:"resizeButton,omitempty"`
 }
 
 type WindowManipulationMode string
@@ -114,21 +115,25 @@ type TriggerLayer struct {
 type EdgeAdjustmentType string
 
 const (
-	EdgeAdjustmentVolume            EdgeAdjustmentType = "volume"
-	EdgeAdjustmentBrightness        EdgeAdjustmentType = "brightness"
-	EdgeAdjustmentRecentApps        EdgeAdjustmentType = "recentApps"
-	EdgeAdjustmentBidirectionalKeys EdgeAdjustmentType = "bidirectionalKeys"
+	EdgeAdjustmentVolume     EdgeAdjustmentType = "volume"
+	EdgeAdjustmentBrightness EdgeAdjustmentType = "brightness"
+	EdgeAdjustmentRecentApps EdgeAdjustmentType = "recentApps"
+	EdgeAdjustmentSwitchApps EdgeAdjustmentType = "switchApps"
+	EdgeAdjustmentSwitchTabs EdgeAdjustmentType = "switchTabs"
+	EdgeAdjustmentPage       EdgeAdjustmentType = "page"
+	EdgeAdjustmentCustom     EdgeAdjustmentType = "custom"
 )
 
 type EdgeWheelRule struct {
-	ID         string             `json:"id"`
-	Enabled    bool               `json:"enabled"`
-	Zone       string             `json:"zone"`
-	Adjustment EdgeAdjustmentType `json:"adjustment"`
-	Step       int                `json:"step"`
-	WheelSteps int                `json:"wheelSteps"`
-	UpKeys     []string           `json:"upKeys,omitempty"`
-	DownKeys   []string           `json:"downKeys,omitempty"`
+	ID             string             `json:"id"`
+	Enabled        bool               `json:"enabled"`
+	Zone           string             `json:"zone"`
+	Input          string             `json:"input"`
+	Adjustment     EdgeAdjustmentType `json:"adjustment"`
+	Step           int                `json:"step"`
+	WheelSteps     int                `json:"wheelSteps"`
+	Action         *Action            `json:"action,omitempty"`
+	OppositeAction *Action            `json:"oppositeAction,omitempty"`
 }
 
 type Profile struct {

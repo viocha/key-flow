@@ -40,10 +40,12 @@ import { Switch } from "@/components/ui/switch"
 import {
   actionSummary,
   defaultGesture,
+  gestureBindingConflicts,
   gestureBindingLabel,
   triggerLabel,
   type UiGestureGroup,
 } from "@/lib/app-model"
+import { useDialogTransition } from "@/hooks/use-dialog-transition"
 import { showUndoDeleteToast } from "@/lib/undo-toast"
 
 function GesturePathPreview({
@@ -106,6 +108,13 @@ export function GestureGroupPanel({
     { open: false } | { open: true; binding?: GestureBinding }
   >({ open: false })
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const deleteAfterCloseRef = useRef(false)
+  const deleteDialog = useDialogTransition(deleteConfirmOpen, () => {
+    setDeleteConfirmOpen(false)
+    if (!deleteAfterCloseRef.current) return
+    deleteAfterCloseRef.current = false
+    onDelete()
+  })
   const groupRef = useRef(group)
   groupRef.current = group
   const reorder = useListReorder(
@@ -115,6 +124,7 @@ export function GestureGroupPanel({
   )
 
   const saveBinding = (binding: GestureBinding) => {
+    if (gestureBindingConflicts(binding, group.bindings)) return
     const exists = group.bindings.some((item) => item.id === binding.id)
     onChange({
       ...group,
@@ -162,7 +172,7 @@ export function GestureGroupPanel({
             onClick={() => setDialog({ open: true, binding: defaultGesture() })}
           >
             <PlusIcon data-icon="inline-start" />
-            添加手势
+            添加
           </Button>
           <Button type="button" variant="outline" size="sm" onClick={onEdit}>
             设置
@@ -183,7 +193,10 @@ export function GestureGroupPanel({
               <DropdownMenuGroup>
                 <DropdownMenuItem
                   variant="destructive"
-                  onClick={() => setDeleteConfirmOpen(true)}
+                  onClick={() => {
+                    deleteAfterCloseRef.current = false
+                    setDeleteConfirmOpen(true)
+                  }}
                 >
                   <Trash2Icon />
                   删除
@@ -251,12 +264,17 @@ export function GestureGroupPanel({
       <GestureDialog
         open={dialog.open}
         binding={dialog.open ? dialog.binding : undefined}
+        existingBindings={group.bindings}
         presets={presets}
         onClose={() => setDialog({ open: false })}
         onSave={saveBinding}
       />
 
-      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+      <Dialog
+        open={deleteDialog.dialogOpen}
+        onOpenChange={deleteDialog.onOpenChange}
+        onOpenChangeComplete={deleteDialog.onOpenChangeComplete}
+      >
         <DialogContent showCloseButton={false}>
           <DialogHeader>
             <DialogTitle>删除手势分组？</DialogTitle>
@@ -266,7 +284,10 @@ export function GestureGroupPanel({
             <Button
               type="button"
               variant="outline"
-              onClick={() => setDeleteConfirmOpen(false)}
+              onClick={() => {
+                deleteAfterCloseRef.current = false
+                deleteDialog.requestClose()
+              }}
             >
               取消
             </Button>
@@ -274,8 +295,8 @@ export function GestureGroupPanel({
               type="button"
               variant="destructive"
               onClick={() => {
-                setDeleteConfirmOpen(false)
-                onDelete()
+                deleteAfterCloseRef.current = true
+                deleteDialog.requestClose()
               }}
             >
               删除

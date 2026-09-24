@@ -74,6 +74,17 @@ func actionPresets() []ActionPreset {
 		{ID: "browser-previous-tab", Group: "浏览器", Name: "上一个标签页", Action: Action{Type: ActionKeyStroke, Keys: []string{"Ctrl", "Shift", "Tab"}}},
 		{ID: "browser-next-tab", Group: "浏览器", Name: "下一个标签页", Action: Action{Type: ActionKeyStroke, Keys: []string{"Ctrl", "Tab"}}},
 
+		{ID: "mouse-left-click", Group: "鼠标", Name: "左键单击", Action: Action{Type: ActionMouse, MouseCommand: "leftClick"}},
+		{ID: "mouse-double-click", Group: "鼠标", Name: "左键双击", Action: Action{Type: ActionMouse, MouseCommand: "doubleClick"}},
+		{ID: "mouse-right-click", Group: "鼠标", Name: "右键单击", Action: Action{Type: ActionMouse, MouseCommand: "rightClick"}},
+		{ID: "mouse-middle-click", Group: "鼠标", Name: "中键单击", Action: Action{Type: ActionMouse, MouseCommand: "middleClick"}},
+		{ID: "mouse-back-click", Group: "鼠标", Name: "后退键单击", Action: Action{Type: ActionMouse, MouseCommand: "backClick"}},
+		{ID: "mouse-forward-click", Group: "鼠标", Name: "前进键单击", Action: Action{Type: ActionMouse, MouseCommand: "forwardClick"}},
+		{ID: "mouse-wheel-up", Group: "鼠标", Name: "向上滚动", Action: Action{Type: ActionMouse, MouseCommand: "wheelUp", Delta: 1}},
+		{ID: "mouse-wheel-down", Group: "鼠标", Name: "向下滚动", Action: Action{Type: ActionMouse, MouseCommand: "wheelDown", Delta: 1}},
+		{ID: "mouse-wheel-left", Group: "鼠标", Name: "向左滚动", Action: Action{Type: ActionMouse, MouseCommand: "wheelLeft", Delta: 1}},
+		{ID: "mouse-wheel-right", Group: "鼠标", Name: "向右滚动", Action: Action{Type: ActionMouse, MouseCommand: "wheelRight", Delta: 1}},
+
 		{ID: "window-close", Group: "窗口", Name: "关闭窗口", Action: Action{Type: ActionWindow, WindowCommand: "close"}},
 		{ID: "window-terminate-process", Group: "窗口", Name: "终止进程", Action: Action{Type: ActionWindow, WindowCommand: "terminateProcess"}},
 		{ID: "window-previous", Group: "窗口", Name: "切换上一个窗口", Action: Action{Type: ActionWindow, WindowCommand: "previousWindow"}},
@@ -82,17 +93,18 @@ func actionPresets() []ActionPreset {
 		{ID: "window-restore-minimized", Group: "窗口", Name: "恢复最小化窗口", Action: Action{Type: ActionWindow, WindowCommand: "restoreMinimized"}},
 		{ID: "window-maximize", Group: "窗口", Name: "最大化窗口", Action: Action{Type: ActionWindow, WindowCommand: "maximize"}},
 		{ID: "window-toggle-maximize", Group: "窗口", Name: "切换最大化", Action: Action{Type: ActionWindow, WindowCommand: "toggleMaximize"}},
+		{ID: "window-toggle-vertical-maximize", Group: "窗口", Name: "切换垂直最大化", Action: Action{Type: ActionWindow, WindowCommand: "toggleVerticalMaximize"}},
+		{ID: "window-opacity", Group: "窗口", Name: "调整窗口透明度", Action: Action{Type: ActionWindow, WindowCommand: "opacity", Delta: 5}},
+		{ID: "window-scale", Group: "窗口", Name: "窗口中心缩放", Action: Action{Type: ActionWindow, WindowCommand: "scale", Delta: 5}},
 		{ID: "window-topmost", Group: "窗口", Name: "切换置顶", Action: Action{Type: ActionWindow, WindowCommand: "alwaysOnTop", WindowBorderColor: "#34A9DE", WindowBorderSize: 2}},
 
 		{ID: "media-play", Group: "媒体", Name: "播放 / 暂停", Action: Action{Type: ActionKeyStroke, Keys: []string{"MediaPlayPause"}}},
 		{ID: "media-next", Group: "媒体", Name: "下一首", Action: Action{Type: ActionKeyStroke, Keys: []string{"MediaNext"}}},
 		{ID: "media-prev", Group: "媒体", Name: "上一首", Action: Action{Type: ActionKeyStroke, Keys: []string{"MediaPrev"}}},
-		{ID: "media-volume-up", Group: "媒体", Name: "音量增加", Action: Action{Type: ActionVolume, Delta: 1}},
-		{ID: "media-volume-down", Group: "媒体", Name: "音量降低", Action: Action{Type: ActionVolume, Delta: -1}},
+		{ID: "media-volume", Group: "媒体", Name: "调整音量", Action: Action{Type: ActionVolume, Delta: 5}},
 		{ID: "media-mute", Group: "媒体", Name: "静音", Action: Action{Type: ActionKeyStroke, Keys: []string{"VolumeMute"}}},
 
-		{ID: "display-brightness-up", Group: "显示器", Name: "亮度增加 5%", Action: Action{Type: ActionBrightness, Delta: 5}},
-		{ID: "display-brightness-down", Group: "显示器", Name: "亮度降低 5%", Action: Action{Type: ActionBrightness, Delta: -5}},
+		{ID: "display-brightness", Group: "显示器", Name: "调整亮度", Action: Action{Type: ActionBrightness, Delta: 5}},
 
 		{ID: "dev-terminal", Group: "开发", Name: "Windows Terminal", Action: Action{Type: ActionCommand, Program: "wt.exe", ArgsMode: "commandLine"}},
 	}

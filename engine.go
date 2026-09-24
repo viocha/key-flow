@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -34,6 +35,8 @@ type compiledMouseShortcut struct {
 }
 
 type compiledEdgeWheel struct {
+	zone       string
+	input      string
 	marginPX   int
 	wheelSteps int
 	recentApps bool
@@ -61,9 +64,10 @@ type ActionContext struct {
 }
 
 type InputEngine struct {
-	mu       sync.RWMutex
-	compiled compiledConfig
-	status   EngineStatus
+	mu                sync.RWMutex
+	compiled          compiledConfig
+	status            EngineStatus
+	inputCaptureCount atomic.Int32
 
 	tasks         chan func()
 	overlayEvents chan GestureOverlayEvent
@@ -73,6 +77,27 @@ type InputEngine struct {
 	overlayMu      sync.RWMutex
 	overlayHandler func(GestureOverlayEvent)
 	stopPlatform   func()
+}
+
+func (e *InputEngine) BeginInputCapture() {
+	e.inputCaptureCount.Add(1)
+}
+
+func (e *InputEngine) EndInputCapture() {
+	for {
+		current := e.inputCaptureCount.Load()
+		if current <= 0 || e.inputCaptureCount.CompareAndSwap(current, current-1) {
+			return
+		}
+	}
+}
+
+func (e *InputEngine) ResetInputCapture() {
+	e.inputCaptureCount.Store(0)
+}
+
+func (e *InputEngine) InputCaptureActive() bool {
+	return e.inputCaptureCount.Load() > 0
 }
 
 func NewInputEngine(config AppConfig) (*InputEngine, error) {
@@ -338,11 +363,17 @@ func compileConfig(config AppConfig) (compiledConfig, error) {
 				continue
 			}
 			if rule.MouseInput != "" {
-				key, err := mouseShortcutKey(rule.Modifiers, rule.MouseInput)
-				if err != nil {
-					return compiledConfig{}, err
+				for index, input := range mouseShortcutInputs(rule.MouseInput) {
+					key, err := mouseShortcutKey(rule.Modifiers, input)
+					if err != nil {
+						return compiledConfig{}, err
+					}
+					action := rule.Action
+					if index == 1 {
+						action = *rule.OppositeAction
+					}
+					compiled.mouseHotkeys[key] = compiledMouseShortcut{action: action, wheelSteps: rule.WheelSteps}
 				}
-				compiled.mouseHotkeys[key] = compiledMouseShortcut{action: rule.Action, wheelSteps: rule.WheelSteps}
 				continue
 			}
 			chord, err := canonicalChord(rule.Keys)
@@ -374,11 +405,17 @@ func compileConfig(config AppConfig) (compiledConfig, error) {
 			if !binding.Enabled {
 				continue
 			}
-			key, err := mouseShortcutKey(binding.Modifiers, binding.Input)
-			if err != nil {
-				return compiledConfig{}, err
+			for index, input := range mouseShortcutInputs(binding.Input) {
+				key, err := mouseShortcutKey(binding.Modifiers, input)
+				if err != nil {
+					return compiledConfig{}, err
+				}
+				action := binding.Action
+				if index == 1 {
+					action = *binding.OppositeAction
+				}
+				mouseShortcuts[key] = compiledMouseShortcut{action: action, wheelSteps: binding.WheelSteps}
 			}
-			mouseShortcuts[key] = compiledMouseShortcut{action: binding.Action, wheelSteps: binding.WheelSteps}
 		}
 
 		compiled.layers[layer.Trigger] = compiledLayer{
@@ -419,8 +456,11 @@ func compileConfig(config AppConfig) (compiledConfig, error) {
 			if !rule.Enabled {
 				continue
 			}
+			key := rule.Zone + ":" + rule.Input
 			if rule.Adjustment == EdgeAdjustmentRecentApps {
-				compiled.edgeWheels[rule.Zone] = compiledEdgeWheel{
+				compiled.edgeWheels[key] = compiledEdgeWheel{
+					zone:       rule.Zone,
+					input:      rule.Input,
 					marginPX:   profile.EdgeWheelMarginPX,
 					wheelSteps: rule.WheelSteps,
 					recentApps: true,
@@ -435,19 +475,51 @@ func compileConfig(config AppConfig) (compiledConfig, error) {
 				}
 				continue
 			}
-
-			if rule.Adjustment == EdgeAdjustmentBidirectionalKeys {
-				compiled.edgeWheels[rule.Zone] = compiledEdgeWheel{
+			if rule.Adjustment == EdgeAdjustmentSwitchApps {
+				compiled.edgeWheels[key] = compiledEdgeWheel{
+					zone:       rule.Zone,
+					input:      rule.Input,
 					marginPX:   profile.EdgeWheelMarginPX,
 					wheelSteps: rule.WheelSteps,
-					up: Action{
-						Type: ActionKeyStroke,
-						Keys: append([]string(nil), rule.UpKeys...),
-					},
-					down: Action{
-						Type: ActionKeyStroke,
-						Keys: append([]string(nil), rule.DownKeys...),
-					},
+					up:         Action{Type: ActionWindow, WindowCommand: "previousWindow"},
+					down:       Action{Type: ActionWindow, WindowCommand: "nextWindow"},
+				}
+				continue
+			}
+			if rule.Adjustment == EdgeAdjustmentSwitchTabs {
+				compiled.edgeWheels[key] = compiledEdgeWheel{
+					zone:       rule.Zone,
+					input:      rule.Input,
+					marginPX:   profile.EdgeWheelMarginPX,
+					wheelSteps: rule.WheelSteps,
+					up:         Action{Type: ActionKeyStroke, Keys: []string{"Ctrl", "Shift", "Tab"}},
+					down:       Action{Type: ActionKeyStroke, Keys: []string{"Ctrl", "Tab"}},
+				}
+				continue
+			}
+			if rule.Adjustment == EdgeAdjustmentPage {
+				compiled.edgeWheels[key] = compiledEdgeWheel{
+					zone:       rule.Zone,
+					input:      rule.Input,
+					marginPX:   profile.EdgeWheelMarginPX,
+					wheelSteps: rule.WheelSteps,
+					up:         Action{Type: ActionKeyStroke, Keys: []string{"PageUp"}},
+					down:       Action{Type: ActionKeyStroke, Keys: []string{"PageDown"}},
+				}
+				continue
+			}
+
+			if rule.Adjustment == EdgeAdjustmentCustom {
+				if rule.Action == nil || rule.OppositeAction == nil {
+					return compiledConfig{}, fmt.Errorf("屏幕边缘 %s 的自定义动作不完整", rule.Zone)
+				}
+				compiled.edgeWheels[key] = compiledEdgeWheel{
+					zone:       rule.Zone,
+					input:      rule.Input,
+					marginPX:   profile.EdgeWheelMarginPX,
+					wheelSteps: rule.WheelSteps,
+					up:         *rule.Action,
+					down:       *rule.OppositeAction,
 				}
 				continue
 			}
@@ -456,7 +528,9 @@ func compileConfig(config AppConfig) (compiledConfig, error) {
 			if rule.Adjustment == EdgeAdjustmentBrightness {
 				actionType = ActionBrightness
 			}
-			compiled.edgeWheels[rule.Zone] = compiledEdgeWheel{
+			compiled.edgeWheels[key] = compiledEdgeWheel{
+				zone:       rule.Zone,
+				input:      rule.Input,
 				marginPX:   profile.EdgeWheelMarginPX,
 				wheelSteps: rule.WheelSteps,
 				up:         Action{Type: actionType, Delta: rule.Step},

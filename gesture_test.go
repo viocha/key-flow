@@ -89,6 +89,7 @@ func TestCompileConfigIncludesGesturesAndEdgeWheel(t *testing.T) {
 			ID:         "volume",
 			Enabled:    true,
 			Zone:       "bottomRight",
+			Input:      "wheelVertical",
 			Adjustment: EdgeAdjustmentVolume,
 			Step:       1,
 			WheelSteps: 1,
@@ -108,7 +109,7 @@ func TestCompileConfigIncludesGesturesAndEdgeWheel(t *testing.T) {
 		t.Fatalf("compiled gesture = %#v, found=%v", gesture, ok)
 	}
 
-	edge, ok := compiled.edgeWheels["bottomRight"]
+	edge, ok := compiled.edgeWheels["bottomRight:wheelVertical"]
 	if !ok {
 		t.Fatal("bottom-right edge wheel was not compiled")
 	}
@@ -130,6 +131,7 @@ func TestCompileConfigRecentAppsEdge(t *testing.T) {
 			ID:         "recent-apps",
 			Enabled:    true,
 			Zone:       "right",
+			Input:      "wheelVertical",
 			Adjustment: EdgeAdjustmentRecentApps,
 			Step:       1,
 			WheelSteps: 1,
@@ -140,7 +142,7 @@ func TestCompileConfigRecentAppsEdge(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	edge, ok := compiled.edgeWheels["right"]
+	edge, ok := compiled.edgeWheels["right:wheelVertical"]
 	if !ok || !edge.recentApps {
 		t.Fatalf("recent apps edge = %#v, found=%v", edge, ok)
 	}
@@ -152,19 +154,84 @@ func TestCompileConfigRecentAppsEdge(t *testing.T) {
 	}
 }
 
-func TestCompileConfigBidirectionalKeysEdge(t *testing.T) {
+func TestCompileConfigDirectAppSwitchEdge(t *testing.T) {
 	config := defaultConfig()
-	config.Profiles[0].EdgeWheels = []EdgeWheelRule{
-		{
-			ID:         "tabs",
-			Enabled:    true,
-			Zone:       "left",
-			Adjustment: EdgeAdjustmentBidirectionalKeys,
-			WheelSteps: 1,
-			UpKeys:     []string{"Ctrl", "Shift", "Tab"},
-			DownKeys:   []string{"Ctrl", "Tab"},
-		},
+	config.Profiles[0].EdgeWheels = []EdgeWheelRule{{
+		ID: "switch-apps", Enabled: true, Zone: "right",
+		Input:      "wheelVertical",
+		Adjustment: EdgeAdjustmentSwitchApps, WheelSteps: 2,
+	}}
+
+	compiled, err := compileConfig(config)
+	if err != nil {
+		t.Fatal(err)
 	}
+	edge := compiled.edgeWheels["right:wheelVertical"]
+	if edge.recentApps || edge.wheelSteps != 2 {
+		t.Fatalf("直接切换不应启用任务选择点击模式: %#v", edge)
+	}
+	if edge.up.Type != ActionWindow || edge.up.WindowCommand != "previousWindow" {
+		t.Fatalf("向上切换动作 = %#v", edge.up)
+	}
+	if edge.down.Type != ActionWindow || edge.down.WindowCommand != "nextWindow" {
+		t.Fatalf("向下切换动作 = %#v", edge.down)
+	}
+}
+
+func TestCompileConfigTabSwitchEdge(t *testing.T) {
+	config := defaultConfig()
+	config.Profiles[0].EdgeWheels = []EdgeWheelRule{{
+		ID: "switch-tabs", Enabled: true, Zone: "right",
+		Input:      "wheelVertical",
+		Adjustment: EdgeAdjustmentSwitchTabs, WheelSteps: 1,
+	}}
+
+	compiled, err := compileConfig(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edge := compiled.edgeWheels["right:wheelVertical"]
+	if got := edge.up.Keys; len(got) != 3 || got[0] != "Ctrl" || got[1] != "Shift" || got[2] != "Tab" {
+		t.Fatalf("上一个标签页动作 = %#v", edge.up)
+	}
+	if got := edge.down.Keys; len(got) != 2 || got[0] != "Ctrl" || got[1] != "Tab" {
+		t.Fatalf("下一个标签页动作 = %#v", edge.down)
+	}
+}
+
+func TestCompileConfigPageEdge(t *testing.T) {
+	config := defaultConfig()
+	config.Profiles[0].EdgeWheels = []EdgeWheelRule{{
+		ID: "page", Enabled: true, Zone: "left",
+		Input:      "wheelVertical",
+		Adjustment: EdgeAdjustmentPage, WheelSteps: 1,
+	}}
+
+	compiled, err := compileConfig(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edge := compiled.edgeWheels["left:wheelVertical"]
+	if got := edge.up.Keys; len(got) != 1 || got[0] != "PageUp" {
+		t.Fatalf("page up action = %#v", edge.up)
+	}
+	if got := edge.down.Keys; len(got) != 1 || got[0] != "PageDown" {
+		t.Fatalf("page down action = %#v", edge.down)
+	}
+}
+
+func TestCompileConfigCustomEdgeActions(t *testing.T) {
+	config := defaultConfig()
+	first := Action{Type: ActionWindow, WindowCommand: "scale", Delta: 5}
+	second := Action{Type: ActionWindow, WindowCommand: "scale", Delta: -5}
+	config.Profiles[0].EdgeWheels = []EdgeWheelRule{{
+		ID: "custom", Enabled: true, Zone: "left",
+		Input:          "wheelHorizontal",
+		Adjustment:     EdgeAdjustmentCustom,
+		WheelSteps:     1,
+		Action:         &first,
+		OppositeAction: &second,
+	}}
 
 	if err := validateConfig(config); err != nil {
 		t.Fatal(err)
@@ -173,11 +240,36 @@ func TestCompileConfigBidirectionalKeysEdge(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	edge := compiled.edgeWheels["left"]
-	if got := edge.up.Keys; len(got) != 3 || got[0] != "Ctrl" || got[1] != "Shift" || got[2] != "Tab" {
-		t.Fatalf("bidirectional wheel-up keys = %#v", got)
+	edge := compiled.edgeWheels["left:wheelHorizontal"]
+	if edge.up.WindowCommand != "scale" || edge.up.Delta != 5 {
+		t.Fatalf("first custom action = %#v", edge.up)
 	}
-	if got := edge.down.Keys; len(got) != 2 || got[0] != "Ctrl" || got[1] != "Tab" {
-		t.Fatalf("bidirectional wheel-down keys = %#v", got)
+	if edge.down.WindowCommand != "scale" || edge.down.Delta != -5 {
+		t.Fatalf("second custom action = %#v", edge.down)
+	}
+}
+
+func TestCompileConfigAllowsBothWheelAxesOnSameEdge(t *testing.T) {
+	config := defaultConfig()
+	config.Profiles[0].EdgeWheels = []EdgeWheelRule{
+		{
+			ID: "vertical", Enabled: true, Zone: "right", Input: "wheelVertical",
+			Adjustment: EdgeAdjustmentVolume, Step: 5, WheelSteps: 1,
+		},
+		{
+			ID: "horizontal", Enabled: true, Zone: "right", Input: "wheelHorizontal",
+			Adjustment: EdgeAdjustmentBrightness, Step: 5, WheelSteps: 1,
+		},
+	}
+
+	compiled, err := compileConfig(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if compiled.edgeWheels["right:wheelVertical"].input != "wheelVertical" {
+		t.Fatal("vertical edge wheel was not compiled")
+	}
+	if compiled.edgeWheels["right:wheelHorizontal"].input != "wheelHorizontal" {
+		t.Fatal("horizontal edge wheel was not compiled")
 	}
 }

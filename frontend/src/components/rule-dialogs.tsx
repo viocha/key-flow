@@ -7,7 +7,9 @@ import type {
 import { PlusIcon } from "lucide-react"
 
 import { ActionEditor } from "@/components/action-editor"
+import { BidirectionalActionEditor } from "@/components/bidirectional-action-editor"
 import { KeyRecorder } from "@/components/key-recorder"
+import { MouseModifierInputs } from "@/components/mouse-modifier-inputs"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -19,6 +21,7 @@ import {
 import {
   Field,
   FieldDescription,
+  FieldError,
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field"
@@ -34,15 +37,19 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { WheelStepsInput } from "@/components/wheel-setting-inputs"
 import {
   defaultBinding,
+  actionsForMouseInputChange,
   defaultHotkey,
   defaultLayer,
+  hotkeyConflicts,
+  isBidirectionalMouseInput,
+  layerBindingConflicts,
   mouseInputLabel,
   normalizeMouseModifiers,
   type UiLayer,
 } from "@/lib/app-model"
+import { useDialogTransition } from "@/hooks/use-dialog-transition"
 
 const shortcutInputTypes = {
   keyboard: "键盘",
@@ -55,30 +62,38 @@ const shortcutMouseInputs = [
   "middle",
   "back",
   "forward",
+  "wheelVertical",
+  "wheelHorizontal",
   "wheelUp",
   "wheelDown",
+  "wheelLeft",
+  "wheelRight",
 ] as const
 
-const shortcutMouseModifiers = ["Ctrl", "Shift", "Alt", "Win"] as const
 
 export function ShortcutDialog({
   open,
   rule,
+  existingRules,
   presets,
   onClose,
   onSave,
 }: {
   open: boolean
   rule?: HotkeyRule
+  existingRules: HotkeyRule[]
   presets: ActionPreset[]
   onClose: () => void
   onSave: (rule: HotkeyRule) => void
 }) {
   const [draft, setDraft] = useState<HotkeyRule>(defaultHotkey())
+  const dialog = useDialogTransition(open, onClose)
   const inputType = draft.mouseInput ? "mouse" : "keyboard"
+  const bidirectional = isBidirectionalMouseInput(draft.mouseInput ?? "")
   const mouseInputItems = Object.fromEntries(
     shortcutMouseInputs.map((input) => [input, mouseInputLabel(input)]),
   )
+  const duplicateShortcut = hotkeyConflicts(draft, existingRules)
 
   useEffect(() => {
     if (open) {
@@ -87,13 +102,17 @@ export function ShortcutDialog({
   }, [open, rule])
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+    <Dialog
+      open={dialog.dialogOpen}
+      onOpenChange={dialog.onOpenChange}
+      onOpenChangeComplete={dialog.onOpenChangeComplete}
+    >
       <DialogContent className="h-[calc(100vh-3rem)] max-h-[42rem] grid-rows-[auto_minmax(0,1fr)_auto] sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{rule ? "编辑快捷键" : "添加快捷键"}</DialogTitle>
         </DialogHeader>
-        <ScrollArea className="min-h-0">
-          <div className="p-1">
+        <ScrollArea className="-mr-3 min-h-0">
+          <div className="p-1 pr-4">
             <FieldGroup>
             <Field>
               <FieldLabel>输入类型</FieldLabel>
@@ -111,15 +130,17 @@ export function ShortcutDialog({
                       mouseInput: "wheelUp",
                       wheelSteps: 1,
                       modifiers: ["Alt"],
+                      oppositeAction: undefined,
                     })
                     return
                   }
                   setDraft({
                     ...draft,
-                    keys: draft.keys?.length ? draft.keys : ["Ctrl", "Alt", "K"],
+                    keys: draft.keys?.length ? draft.keys : [],
                     mouseInput: "",
                     wheelSteps: undefined,
                     modifiers: [],
+                    oppositeAction: undefined,
                   })
                 }}
               >
@@ -137,34 +158,12 @@ export function ShortcutDialog({
                   value={draft.keys}
                   onChange={(keys) => setDraft({ ...draft, keys })}
                 />
+                {duplicateShortcut && (
+                  <FieldError>与已有快捷键冲突</FieldError>
+                )}
               </Field>
             ) : (
               <>
-                <Field>
-                  <FieldLabel>修饰键</FieldLabel>
-                  <ToggleGroup
-                    multiple
-                    variant="outline"
-                    className="w-full"
-                    value={normalizeMouseModifiers(draft.modifiers)}
-                    onValueChange={(modifiers) =>
-                      setDraft({
-                        ...draft,
-                        modifiers: normalizeMouseModifiers(modifiers),
-                      })
-                    }
-                  >
-                    {shortcutMouseModifiers.map((modifier) => (
-                      <ToggleGroupItem
-                        key={modifier}
-                        value={modifier}
-                        className="flex-1"
-                      >
-                        {modifier}
-                      </ToggleGroupItem>
-                    ))}
-                  </ToggleGroup>
-                </Field>
                 <Field>
                   <FieldLabel>鼠标输入</FieldLabel>
                   <Select
@@ -172,12 +171,20 @@ export function ShortcutDialog({
                     value={draft.mouseInput ?? "wheelUp"}
                     onValueChange={(mouseInput) => {
                       if (!mouseInput) return
+                      const [action, oppositeAction] = actionsForMouseInputChange(
+                        draft.mouseInput ?? "",
+                        mouseInput,
+                        draft.action,
+                        draft.oppositeAction,
+                      )
                       setDraft({
                         ...draft,
                         mouseInput,
                         wheelSteps: mouseInput.startsWith("wheel")
                           ? draft.wheelSteps ?? 1
                           : undefined,
+                        action,
+                        oppositeAction,
                       })
                     }}
                   >
@@ -194,40 +201,61 @@ export function ShortcutDialog({
                       </SelectGroup>
                     </SelectContent>
                   </Select>
+                  {duplicateShortcut && (
+                    <FieldError>与已有鼠标快捷键冲突</FieldError>
+                  )}
                 </Field>
-                {(draft.mouseInput === "wheelUp" ||
-                  draft.mouseInput === "wheelDown") && (
-                  <WheelStepsInput
-                    value={draft.wheelSteps!}
-                    onValueChange={(wheelSteps) =>
-                      setDraft({ ...draft, wheelSteps })
-                    }
-                  />
-                )}
+                <MouseModifierInputs
+                  value={draft.modifiers}
+                  onChange={(modifiers) => setDraft({ ...draft, modifiers })}
+                  wheelSteps={
+                    draft.mouseInput?.startsWith("wheel")
+                      ? draft.wheelSteps ?? 1
+                      : undefined
+                  }
+                  onWheelStepsChange={(wheelSteps) =>
+                    setDraft({ ...draft, wheelSteps })
+                  }
+                />
               </>
             )}
-              <ActionEditor
-                action={draft.action}
-                presets={presets}
-                onChange={(action) => setDraft({ ...draft, action })}
-              />
+              {bidirectional && draft.oppositeAction ? (
+                <BidirectionalActionEditor
+                  input={draft.mouseInput ?? "wheelVertical"}
+                  action={draft.action}
+                  oppositeAction={draft.oppositeAction}
+                  presets={presets}
+                  onChange={(action, oppositeAction) =>
+                    setDraft({ ...draft, action, oppositeAction })
+                  }
+                />
+              ) : (
+                <ActionEditor
+                  action={draft.action}
+                  presets={presets}
+                  onChange={(action) => setDraft({ ...draft, action })}
+                />
+              )}
             </FieldGroup>
           </div>
         </ScrollArea>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose}>
+          <Button type="button" variant="outline" onClick={dialog.requestClose}>
             取消
           </Button>
           <Button
             type="button"
             disabled={
               inputType === "keyboard"
-                ? !(draft.keys?.length)
-                : !draft.mouseInput || !normalizeMouseModifiers(draft.modifiers).length
+                ? !(draft.keys?.length) || duplicateShortcut
+                : !draft.mouseInput ||
+                  !normalizeMouseModifiers(draft.modifiers).length ||
+                  duplicateShortcut ||
+                  (bidirectional && !draft.oppositeAction)
             }
             onClick={() => {
               onSave(draft)
-              onClose()
+              dialog.requestClose()
             }}
           >
             保存
@@ -265,6 +293,7 @@ export function LayerDialog({
   onSave: (layer: UiLayer) => void
 }) {
   const [draft, setDraft] = useState<UiLayer>(() => defaultLayer(defaultHoldMs))
+  const dialog = useDialogTransition(open, onClose)
 
   useEffect(() => {
     if (open) {
@@ -273,7 +302,11 @@ export function LayerDialog({
   }, [defaultHoldMs, layer, open])
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+    <Dialog
+      open={dialog.dialogOpen}
+      onOpenChange={dialog.onOpenChange}
+      onOpenChangeComplete={dialog.onOpenChangeComplete}
+    >
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{layer ? "编辑触发键" : "添加触发键"}</DialogTitle>
@@ -345,7 +378,7 @@ export function LayerDialog({
           </Field>
         </FieldGroup>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose}>
+          <Button type="button" variant="outline" onClick={dialog.requestClose}>
             取消
           </Button>
           <Button
@@ -358,7 +391,7 @@ export function LayerDialog({
                   triggerItems[draft.trigger as keyof typeof triggerItems] ??
                   draft.trigger,
               })
-              onClose()
+              dialog.requestClose()
             }}
           >
             保存
@@ -372,17 +405,21 @@ export function LayerDialog({
 export function BindingDialog({
   open,
   binding,
+  existingBindings,
   presets,
   onClose,
   onSave,
 }: {
   open: boolean
   binding?: LayerBinding
+  existingBindings: LayerBinding[]
   presets: ActionPreset[]
   onClose: () => void
   onSave: (binding: LayerBinding) => void
 }) {
   const [draft, setDraft] = useState<LayerBinding>(defaultBinding())
+  const dialog = useDialogTransition(open, onClose)
+  const duplicate = layerBindingConflicts(draft, existingBindings)
 
   useEffect(() => {
     if (open) {
@@ -391,20 +428,27 @@ export function BindingDialog({
   }, [binding, open])
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+    <Dialog
+      open={dialog.dialogOpen}
+      onOpenChange={dialog.onOpenChange}
+      onOpenChangeComplete={dialog.onOpenChangeComplete}
+    >
       <DialogContent className="h-[calc(100vh-3rem)] max-h-[42rem] grid-rows-[auto_minmax(0,1fr)_auto] sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{binding ? "编辑 Layer 映射" : "添加 Layer 映射"}</DialogTitle>
+          <DialogTitle>{binding ? "编辑按键映射" : "添加按键映射"}</DialogTitle>
         </DialogHeader>
-        <ScrollArea className="min-h-0">
-          <div className="p-1">
+        <ScrollArea className="-mr-3 min-h-0">
+          <div className="p-1 pr-4">
             <FieldGroup>
             <Field>
-              <FieldLabel>Layer 内按键</FieldLabel>
+              <FieldLabel>触发按键</FieldLabel>
               <KeyRecorder
                 value={draft.keys}
                 onChange={(keys) => setDraft({ ...draft, keys })}
               />
+              {duplicate && (
+                <FieldError>与已有按键映射冲突</FieldError>
+              )}
             </Field>
               <ActionEditor
                 action={draft.action}
@@ -415,15 +459,15 @@ export function BindingDialog({
           </div>
         </ScrollArea>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose}>
+          <Button type="button" variant="outline" onClick={dialog.requestClose}>
             取消
           </Button>
           <Button
             type="button"
-            disabled={!(draft.keys?.length)}
+            disabled={!(draft.keys?.length) || duplicate}
             onClick={() => {
               onSave(draft)
-              onClose()
+              dialog.requestClose()
             }}
           >
             保存

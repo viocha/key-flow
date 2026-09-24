@@ -16,6 +16,7 @@ export interface Action {
     "delayMs"?: number;
     "editCommand"?: string;
     "windowCommand"?: string;
+    "mouseCommand"?: string;
     "windowBorderColor"?: string;
     "windowBorderSize"?: number;
     "delta"?: number;
@@ -42,6 +43,7 @@ export enum ActionType {
     ActionSequence = "sequence",
     ActionEdit = "edit",
     ActionWindow = "window",
+    ActionMouse = "mouse",
     ActionVolume = "volume",
     ActionBrightness = "brightness",
 };
@@ -62,18 +64,22 @@ export enum EdgeAdjustmentType {
     EdgeAdjustmentVolume = "volume",
     EdgeAdjustmentBrightness = "brightness",
     EdgeAdjustmentRecentApps = "recentApps",
-    EdgeAdjustmentBidirectionalKeys = "bidirectionalKeys",
+    EdgeAdjustmentSwitchApps = "switchApps",
+    EdgeAdjustmentSwitchTabs = "switchTabs",
+    EdgeAdjustmentPage = "page",
+    EdgeAdjustmentCustom = "custom",
 };
 
 export interface EdgeWheelRule {
     "id": string;
     "enabled": boolean;
     "zone": string;
+    "input": string;
     "adjustment": EdgeAdjustmentType;
     "step": number;
     "wheelSteps": number;
-    "upKeys"?: string[] | null;
-    "downKeys"?: string[] | null;
+    "action"?: Action | null;
+    "oppositeAction"?: Action | null;
 }
 
 export interface EngineStatus {
@@ -115,6 +121,7 @@ export interface HotkeyRule {
     "wheelSteps"?: number;
     "modifiers"?: string[] | null;
     "action": Action;
+    "oppositeAction"?: Action | null;
 }
 
 export interface LayerBinding {
@@ -130,6 +137,7 @@ export interface MouseShortcutBinding {
     "wheelSteps"?: number;
     "modifiers"?: string[] | null;
     "action": Action;
+    "oppositeAction"?: Action | null;
 }
 
 export interface Profile {
@@ -166,7 +174,4 @@ export interface WindowPointerOperations {
     "enabled": boolean;
     "moveButton"?: string;
     "resizeButton"?: string;
-    "scaleWheel": boolean;
-    "scaleStepPercent": number;
-    "wheelSteps": number;
 }
