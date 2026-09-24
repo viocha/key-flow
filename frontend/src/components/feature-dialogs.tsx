@@ -39,6 +39,7 @@ import {
 
 import {
   defaultEdgeWheel,
+  actionReady,
   defaultGesture,
   emptyAction,
   defaultGestureGroup,
@@ -133,7 +134,7 @@ export function GestureGroupDialog({
               }
             >
               <SelectTrigger className="w-full">
-                <SelectValue />
+                <SelectValue placeholder="选择启动键" />
               </SelectTrigger>
               <SelectContent alignItemWithTrigger={false}>
                 <SelectGroup>
@@ -290,7 +291,8 @@ export function GestureDialog({
               !(draft.directions?.length) ||
               !draft.preview ||
               draft.preview.length < 2 ||
-              duplicate
+              duplicate ||
+              !actionReady(draft.action)
             }
             onClick={() => {
               onSave(draft)
@@ -356,7 +358,7 @@ export function EdgeWheelDialog({
     isSwitchTabs ||
     isPage ||
     isCustom
-  const maxStep = 100
+  const maxStep = draft.adjustment === EdgeAdjustmentType.EdgeAdjustmentVolume ? 20 : 100
 
   return (
     <Dialog
@@ -431,8 +433,7 @@ export function EdgeWheelDialog({
                   ...draft,
                   adjustment,
                   step:
-                    adjustment === EdgeAdjustmentType.EdgeAdjustmentBrightness ||
-                    adjustment === EdgeAdjustmentType.EdgeAdjustmentVolume
+                    adjustment === EdgeAdjustmentType.EdgeAdjustmentBrightness
                       ? 5
                       : 1,
                   ...(adjustment === EdgeAdjustmentType.EdgeAdjustmentCustom
@@ -502,7 +503,11 @@ export function EdgeWheelDialog({
                 <>
                   <span>，</span>
                   <div className="flex items-center gap-2 whitespace-nowrap">
-                    <span>每次变化</span>
+                    <span>
+                      {draft.adjustment === EdgeAdjustmentType.EdgeAdjustmentVolume
+                        ? "每次触发"
+                        : "每次变化"}
+                    </span>
                     <NumberInput
                       className="w-16"
                       min={1}
@@ -512,13 +517,18 @@ export function EdgeWheelDialog({
                       onValueChange={(step) =>
                         setDraft({ ...draft, step: Math.round(step) })
                       }
-                      aria-label="每次变化量"
+                      aria-label={
+                        draft.adjustment === EdgeAdjustmentType.EdgeAdjustmentVolume
+                          ? "每次触发按键次数"
+                          : "每次变化量"
+                      }
                     />
                     <span>
-                      {draft.adjustment === EdgeAdjustmentType.EdgeAdjustmentBrightness ||
-                      draft.adjustment === EdgeAdjustmentType.EdgeAdjustmentVolume
+                      {draft.adjustment === EdgeAdjustmentType.EdgeAdjustmentBrightness
                         ? "%"
-                        : "档"}
+                        : draft.adjustment === EdgeAdjustmentType.EdgeAdjustmentVolume
+                          ? "次"
+                          : "档"}
                     </span>
                   </div>
                 </>

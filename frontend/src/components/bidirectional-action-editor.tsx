@@ -30,7 +30,7 @@ const operationItems: Record<BidirectionalOperation, string> = {
 }
 
 const amountSettings = {
-  volume: { max: 100, initial: 5, unit: "%" },
+  volume: { max: 20, initial: 1, unit: "次" },
   brightness: { max: 100, initial: 5, unit: "%" },
   opacity: { max: 100, initial: 5, unit: "%" },
   scale: { max: 100, initial: 5, unit: "%" },

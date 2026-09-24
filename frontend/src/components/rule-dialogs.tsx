@@ -39,6 +39,7 @@ import {
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import {
   defaultBinding,
+  actionReady,
   actionsForMouseInputChange,
   defaultHotkey,
   defaultLayer,
@@ -127,9 +128,9 @@ export function ShortcutDialog({
                     setDraft({
                       ...draft,
                       keys: [],
-                      mouseInput: "wheelUp",
-                      wheelSteps: 1,
-                      modifiers: ["Alt"],
+                      mouseInput: "",
+                      wheelSteps: undefined,
+                      modifiers: [],
                       oppositeAction: undefined,
                     })
                     return
@@ -168,7 +169,7 @@ export function ShortcutDialog({
                   <FieldLabel>鼠标输入</FieldLabel>
                   <Select
                     items={mouseInputItems}
-                    value={draft.mouseInput ?? "wheelUp"}
+                    value={draft.mouseInput ?? ""}
                     onValueChange={(mouseInput) => {
                       if (!mouseInput) return
                       const [action, oppositeAction] = actionsForMouseInputChange(
@@ -189,7 +190,7 @@ export function ShortcutDialog({
                     }}
                   >
                     <SelectTrigger className="w-full">
-                      <SelectValue />
+                      <SelectValue placeholder="选择鼠标输入" />
                     </SelectTrigger>
                     <SelectContent alignItemWithTrigger={false}>
                       <SelectGroup>
@@ -247,11 +248,12 @@ export function ShortcutDialog({
             type="button"
             disabled={
               inputType === "keyboard"
-                ? !(draft.keys?.length) || duplicateShortcut
+                ? !(draft.keys?.length) || duplicateShortcut || !actionReady(draft.action)
                 : !draft.mouseInput ||
                   !normalizeMouseModifiers(draft.modifiers).length ||
                   duplicateShortcut ||
-                  (bidirectional && !draft.oppositeAction)
+                  !actionReady(draft.action) ||
+                  (bidirectional && (!draft.oppositeAction || !actionReady(draft.oppositeAction)))
             }
             onClick={() => {
               onSave(draft)
@@ -318,7 +320,7 @@ export function LayerDialog({
               items={triggerItems}
               value={draft.trigger}
               onValueChange={(value) => {
-                const trigger = value ?? "CapsLock"
+                const trigger = value ?? ""
                 setDraft({
                   ...draft,
                   trigger,
@@ -327,7 +329,7 @@ export function LayerDialog({
               }}
             >
               <SelectTrigger className="w-full">
-                <SelectValue />
+                <SelectValue placeholder="选择触发键" />
               </SelectTrigger>
               <SelectContent alignItemWithTrigger={false}>
                 <SelectGroup>
@@ -383,7 +385,7 @@ export function LayerDialog({
           </Button>
           <Button
             type="button"
-            disabled={draft.holdMs < 50 || draft.holdMs > 1500}
+            disabled={!draft.trigger || draft.holdMs < 50 || draft.holdMs > 1500}
             onClick={() => {
               onSave({
                 ...draft,
@@ -464,7 +466,7 @@ export function BindingDialog({
           </Button>
           <Button
             type="button"
-            disabled={!(draft.keys?.length) || duplicate}
+            disabled={!(draft.keys?.length) || duplicate || !actionReady(draft.action)}
             onClick={() => {
               onSave(draft)
               dialog.requestClose()

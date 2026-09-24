@@ -343,8 +343,8 @@ func validateConfig(config AppConfig) error {
 			}
 			switch rule.Adjustment {
 			case EdgeAdjustmentVolume:
-				if rule.Step < 1 || rule.Step > 100 {
-					return fmt.Errorf("屏幕边缘 %s 的音量变化须为 1–100%%", rule.Zone)
+				if rule.Step < 1 || rule.Step > 20 {
+					return fmt.Errorf("屏幕边缘 %s 的音量按键次数须为 1–20", rule.Zone)
 				}
 			case EdgeAdjustmentBrightness:
 				if rule.Step < 1 || rule.Step > 100 {
@@ -656,8 +656,8 @@ func validateAction(action Action, depth int) error {
 			return fmt.Errorf("未知鼠标命令: %s", action.MouseCommand)
 		}
 	case ActionVolume:
-		if action.Delta == 0 || action.Delta < -100 || action.Delta > 100 {
-			return errors.New("音量变化须为 -100–100% 且不能为 0")
+		if action.Delta == 0 || action.Delta < -20 || action.Delta > 20 {
+			return errors.New("音量调节值须为 -20–20 且不能为 0")
 		}
 	case ActionBrightness:
 		if action.Delta == 0 || action.Delta < -100 || action.Delta > 100 {

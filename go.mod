@@ -4,7 +4,6 @@ go 1.25.0
 
 require (
 	github.com/go-ole/go-ole v1.3.0
-	github.com/moutend/go-wca v0.3.0
 	github.com/wailsapp/wails/v3 v3.0.0-beta.20
 	golang.org/x/sys v0.46.0
 )

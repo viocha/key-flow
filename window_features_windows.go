@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"math"
 	"os/exec"
+	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -579,32 +581,34 @@ func pointInEdgeZone(pt point, zone string, margin int) bool {
 	}
 }
 
-func adjustDisplayBrightness(delta int) error {
+func adjustDisplayBrightness(delta int) (int, point, error) {
 	pt := cursorPoint()
 	monitor := monitorAtPoint(pt)
 	if monitor == 0 {
-		return fmt.Errorf("无法获取当前显示器")
+		return 0, pt, fmt.Errorf("无法获取当前显示器")
 	}
-	if err := adjustPhysicalMonitorBrightness(monitor, delta); err == nil {
-		return nil
+	if percent, err := adjustPhysicalMonitorBrightness(monitor, delta); err == nil {
+		return percent, pt, nil
 	}
-	return adjustInternalBrightnessFallback(delta)
+	percent, err := adjustInternalBrightnessFallback(delta)
+	return percent, pt, err
 }
 
-func adjustPhysicalMonitorBrightness(monitor windows.Handle, delta int) error {
+func adjustPhysicalMonitorBrightness(monitor windows.Handle, delta int) (int, error) {
 	var count uint32
 	ok, _, err := procGetNumberPhysicalMonitors.Call(uintptr(monitor), uintptr(unsafe.Pointer(&count)))
 	if ok == 0 || count == 0 {
-		return fmt.Errorf("显示器不支持 DDC/CI: %v", err)
+		return 0, fmt.Errorf("显示器不支持 DDC/CI: %v", err)
 	}
 	monitors := make([]physicalMonitor, count)
 	ok, _, err = procGetPhysicalMonitors.Call(uintptr(monitor), uintptr(count), uintptr(unsafe.Pointer(&monitors[0])))
 	if ok == 0 {
-		return fmt.Errorf("读取物理显示器失败: %v", err)
+		return 0, fmt.Errorf("读取物理显示器失败: %v", err)
 	}
 	defer procDestroyPhysicalMonitors.Call(uintptr(count), uintptr(unsafe.Pointer(&monitors[0])))
 
 	changed := false
+	var displayedPercent int
 	for i := range monitors {
 		var minValue, currentValue, maxValue uint32
 		ok, _, _ := procGetMonitorBrightness.Call(
@@ -620,23 +624,40 @@ func adjustPhysicalMonitorBrightness(monitor windows.Handle, delta int) error {
 		targetPercent := max(0, min(100, percent+delta))
 		target := minValue + uint32(math.Round(float64(maxValue-minValue)*float64(targetPercent)/100))
 		ok, _, _ = procSetMonitorBrightness.Call(uintptr(monitors[i].Handle), uintptr(target))
-		changed = changed || ok != 0
+		if ok != 0 {
+			changed = true
+			displayedPercent = targetPercent
+			var actual uint32
+			if read, _, _ := procGetMonitorBrightness.Call(
+				uintptr(monitors[i].Handle),
+				uintptr(unsafe.Pointer(&minValue)),
+				uintptr(unsafe.Pointer(&actual)),
+				uintptr(unsafe.Pointer(&maxValue)),
+			); read != 0 && maxValue > minValue {
+				displayedPercent = int(math.Round(float64(actual-minValue) * 100 / float64(maxValue-minValue)))
+			}
+		}
 	}
 	if !changed {
-		return fmt.Errorf("显示器拒绝亮度调整")
+		return 0, fmt.Errorf("显示器拒绝亮度调整")
 	}
-	return nil
+	return displayedPercent, nil
 }
 
-func adjustInternalBrightnessFallback(delta int) error {
-	script := fmt.Sprintf("$b=Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightness -ErrorAction Stop | Select-Object -First 1; $m=Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightnessMethods -ErrorAction Stop | Select-Object -First 1; $v=[Math]::Max(0,[Math]::Min(100,[int]$b.CurrentBrightness+(%d))); $m.WmiSetBrightness(0,$v) | Out-Null", delta)
+func adjustInternalBrightnessFallback(delta int) (int, error) {
+	script := fmt.Sprintf("$b=Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightness -ErrorAction Stop | Select-Object -First 1; $m=Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightnessMethods -ErrorAction Stop | Select-Object -First 1; $v=[Math]::Max(0,[Math]::Min(100,[int]$b.CurrentBrightness+(%d))); $r=$m.WmiSetBrightness(0,$v); if ($r.ReturnValue -ne 0) { exit 1 }; $after=Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightness -ErrorAction SilentlyContinue | Select-Object -First 1; if ($after) { [Console]::Out.Write([int]$after.CurrentBrightness) } else { [Console]::Out.Write($v) }", delta)
 	command := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
 	command.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,
 		CreationFlags: 0x08000000,
 	}
-	if err := command.Run(); err != nil {
-		return fmt.Errorf("调整内置显示器亮度失败: %w", err)
+	output, err := command.Output()
+	if err != nil {
+		return 0, fmt.Errorf("调整内置显示器亮度失败: %w", err)
 	}
-	return nil
+	percent, err := strconv.Atoi(strings.TrimSpace(string(output)))
+	if err != nil {
+		return 0, fmt.Errorf("读取调整后的亮度失败: %w", err)
+	}
+	return percent, nil
 }

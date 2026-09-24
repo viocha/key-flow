@@ -39,11 +39,11 @@ export type UiConfig = Omit<AppConfig, "profiles"> & {
   profiles: UiProfile[]
 }
 
-export function defaultGestureGroup(trigger = "MouseMiddle"): UiGestureGroup {
+export function defaultGestureGroup(): UiGestureGroup {
   return {
     id: newID("gesture-group"),
     enabled: true,
-    trigger,
+    trigger: "",
     showTrail: true,
     startDistancePx: 18,
     segmentDistancePx: 28,
@@ -123,8 +123,8 @@ export function actionSummary(action: Action) {
           : "")
     case ActionType.ActionVolume:
       return action.delta && action.delta > 0
-        ? "音量 +" + action.delta + "%"
-        : "音量 " + (action.delta ?? 0) + "%"
+        ? "音量增加 " + action.delta + " 次"
+        : "音量降低 " + Math.abs(action.delta ?? 0) + " 次"
     case ActionType.ActionBrightness:
       return action.delta && action.delta > 0
         ? "亮度 +" + action.delta + "%"
@@ -416,7 +416,7 @@ export function makeBidirectionalMouseActions(
 }
 
 export function defaultBidirectionalMouseActions(_input: string): [Action, Action] {
-  return makeBidirectionalMouseActions("volume", 5)
+  return makeBidirectionalMouseActions("volume", 1)
 }
 
 export function actionsForMouseInputChange(
@@ -450,7 +450,7 @@ export function mouseShortcutActionSummary(
   }
   const operation = bidirectionalOperation(action, oppositeAction)
   const amount = Math.abs(action.delta ?? 0)
-  if (operation === "volume") return `音量 ±${amount}%`
+  if (operation === "volume") return `音量 ±${amount} 次`
   if (operation === "brightness") return `亮度 ±${amount}%`
   if (operation === "opacity") return `透明度 ±${amount}%`
   if (operation === "scale") return `窗口缩放 ±${amount}%`
@@ -547,10 +547,9 @@ export function edgeWheelConflicts(rule: EdgeWheelRule, existingRules: EdgeWheel
 }
 
 export function edgeStepLabel(rule: EdgeWheelRule) {
-  return rule.adjustment === EdgeAdjustmentType.EdgeAdjustmentBrightness ||
-    rule.adjustment === EdgeAdjustmentType.EdgeAdjustmentVolume
-    ? rule.step + "%"
-    : rule.step + " 步"
+  if (rule.adjustment === EdgeAdjustmentType.EdgeAdjustmentBrightness) return rule.step + "%"
+  if (rule.adjustment === EdgeAdjustmentType.EdgeAdjustmentVolume) return rule.step + " 次"
+  return rule.step + " 步"
 }
 
 export function edgeZoneLabel(zone: string) {
@@ -615,16 +614,20 @@ export function gestureBindingConflicts(
 export function defaultAction(): Action {
   return {
     type: ActionType.ActionKeyStroke,
-    name: "复制",
-    keys: ["Ctrl", "C"],
+    keys: [],
   }
 }
 
 export function emptyAction(): Action {
-  return {
-    type: ActionType.ActionKeyStroke,
-    keys: [],
+  return defaultAction()
+}
+
+export function actionReady(action: Action): boolean {
+  if (action.type === ActionType.ActionKeyStroke) return !!action.keys?.length
+  if (action.type === ActionType.ActionSequence) {
+    return !!action.sequence?.length && action.sequence.every(actionReady)
   }
+  return true
 }
 
 export function actionOrDefault(action: Action | null | undefined): Action {
@@ -643,9 +646,9 @@ export function defaultHotkey(): HotkeyRule {
 export function defaultLayer(holdMs: number): UiLayer {
   return {
     id: newID("layer"),
-    name: "CapsLock",
+    name: "",
     enabled: true,
-    trigger: "CapsLock",
+    trigger: "",
     holdMs,
     tapBehavior: "original",
     bindings: [],
@@ -663,11 +666,7 @@ export function defaultBinding(): LayerBinding {
     id: newID("binding"),
     enabled: true,
     keys: [],
-    action: {
-      type: ActionType.ActionKeyStroke,
-      name: "向左",
-      keys: ["ArrowLeft"],
-    },
+    action: defaultAction(),
   }
 }
 
@@ -701,7 +700,7 @@ export function defaultEdgeWheel(): EdgeWheelRule {
     zone: "",
     input: "",
     adjustment: EdgeAdjustmentType.EdgeAdjustmentVolume,
-    step: 5,
+    step: 1,
     wheelSteps: 1,
   }
 }

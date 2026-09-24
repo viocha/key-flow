@@ -82,7 +82,6 @@ import {
   actionSummary,
   activeProfile,
   defaultGestureGroup,
-  defaultLayer,
   hotkeyConflicts,
   hotkeyInputKeys,
   layerBindingConflicts,
@@ -364,10 +363,7 @@ function App() {
     ].find((candidate) => !used.has(candidate))
     if (!trigger) return
 
-    const layer = defaultLayer(config.settings.defaultHoldMs)
-    layer.trigger = trigger
-    layer.name = triggerLabel(trigger)
-    setLayerDialog({ open: true, layer })
+    setLayerDialog({ open: true })
   }
 
   const deleteLayer = (id: string) => {
@@ -404,12 +400,11 @@ function App() {
   )
 
   const addGestureGroup = () => {
-    const trigger = availableGestureTriggers[0]
-    if (!trigger) return
+    if (availableGestureTriggers.length === 0) return
 
     setGestureGroupDialog({
       open: true,
-      group: defaultGestureGroup(trigger),
+      group: defaultGestureGroup(),
       isNew: true,
     })
   }

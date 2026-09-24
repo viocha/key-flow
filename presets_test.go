@@ -53,7 +53,7 @@ func TestAdjustablePresetsAreSingleParameterizedActions(t *testing.T) {
 	want := map[string]int{
 		"window-opacity":     5,
 		"window-scale":       5,
-		"media-volume":       5,
+		"media-volume":       1,
 		"display-brightness": 5,
 	}
 	for _, preset := range actionPresets() {
@@ -70,5 +70,18 @@ func TestAdjustablePresetsAreSingleParameterizedActions(t *testing.T) {
 	}
 	if len(want) != 0 {
 		t.Fatalf("缺少可参数化预置: %v", want)
+	}
+}
+
+func TestVolumeKeyPressCountValidation(t *testing.T) {
+	for _, delta := range []int{-20, -1, 1, 20} {
+		if err := validateAction(Action{Type: ActionVolume, Delta: delta}, 0); err != nil {
+			t.Errorf("音量按键 %d 次被拒绝: %v", delta, err)
+		}
+	}
+	for _, delta := range []int{-21, 0, 21} {
+		if err := validateAction(Action{Type: ActionVolume, Delta: delta}, 0); err == nil {
+			t.Errorf("音量按键 %d 次未被拒绝", delta)
+		}
 	}
 }

@@ -101,7 +101,7 @@ func actionPresets() []ActionPreset {
 		{ID: "media-play", Group: "媒体", Name: "播放 / 暂停", Action: Action{Type: ActionKeyStroke, Keys: []string{"MediaPlayPause"}}},
 		{ID: "media-next", Group: "媒体", Name: "下一首", Action: Action{Type: ActionKeyStroke, Keys: []string{"MediaNext"}}},
 		{ID: "media-prev", Group: "媒体", Name: "上一首", Action: Action{Type: ActionKeyStroke, Keys: []string{"MediaPrev"}}},
-		{ID: "media-volume", Group: "媒体", Name: "调整音量", Action: Action{Type: ActionVolume, Delta: 5}},
+		{ID: "media-volume", Group: "媒体", Name: "调整音量", Action: Action{Type: ActionVolume, Delta: 1}},
 		{ID: "media-mute", Group: "媒体", Name: "静音", Action: Action{Type: ActionKeyStroke, Keys: []string{"VolumeMute"}}},
 
 		{ID: "display-brightness", Group: "显示器", Name: "调整亮度", Action: Action{Type: ActionBrightness, Delta: 5}},

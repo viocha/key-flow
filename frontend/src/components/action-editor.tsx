@@ -125,7 +125,7 @@ function presetAmountField(action: Action) {
     return { label: "亮度变化", max: 100, unit: "%", signed: true }
   }
   if (action.type === ActionType.ActionVolume) {
-    return { label: "音量变化", max: 100, unit: "%", signed: true }
+    return { label: "音量调节", max: 20, unit: "", signed: true }
   }
   if (action.type === ActionType.ActionMouse && action.mouseCommand?.startsWith("wheel")) {
     return { label: "滚动格数", max: 20, unit: "格", signed: false }
@@ -231,7 +231,7 @@ export function ActionEditor({
         onChange({ type, mouseCommand: "leftClick" })
         break
       case ActionType.ActionVolume:
-        onChange({ type, delta: 5 })
+        onChange({ type, delta: 1 })
         break
       case ActionType.ActionBrightness:
         onChange({ type, delta: 5 })
@@ -240,7 +240,7 @@ export function ActionEditor({
         onChange({ type, sequence: [defaultAction()] })
         break
       default:
-        onChange({ type: ActionType.ActionKeyStroke, keys: ["Ctrl", "C"] })
+        onChange({ type: ActionType.ActionKeyStroke, keys: [] })
     }
   }
 
@@ -356,10 +356,15 @@ export function ActionEditor({
               value={amountField.signed ? (action.delta ?? 1) : Math.abs(action.delta ?? 1)}
               onValueChange={setDelta}
             />
-            <span className="shrink-0 text-sm text-muted-foreground">
-              {amountField.unit}
-            </span>
+            {amountField.unit && (
+              <span className="shrink-0 text-sm text-muted-foreground">
+                {amountField.unit}
+              </span>
+            )}
           </div>
+          {action.type === ActionType.ActionVolume && (
+            <FieldDescription>正数增大，负数减小</FieldDescription>
+          )}
         </Field>
       )}
 
@@ -709,15 +714,15 @@ export function ActionEditor({
       {editorMode === "custom" &&
         action.type === ActionType.ActionVolume && (
         <Field>
-          <FieldLabel htmlFor={fieldID + "-volume"}>音量变化</FieldLabel>
+          <FieldLabel htmlFor={fieldID + "-volume"}>音量调节</FieldLabel>
           <NumberInput
             id={fieldID + "-volume"}
-            min={-100}
-            max={100}
-            value={action.delta ?? 5}
+            min={-20}
+            max={20}
+            value={action.delta ?? 1}
             onValueChange={setDelta}
           />
-          <FieldDescription>正数增加，负数降低，单位 %</FieldDescription>
+          <FieldDescription>正数增大，负数减小</FieldDescription>
         </Field>
       )}
 

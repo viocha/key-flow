@@ -22,7 +22,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
+import { Field, FieldError, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -37,6 +37,7 @@ import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import {
   actionsForMouseInputChange,
+  actionReady,
   defaultMouseShortcutAction,
   isBidirectionalMouseInput,
   mouseInputForTrigger,
@@ -430,7 +431,7 @@ function MouseShortcutDialog({
     [availableInputs],
   )
   const [draft, setDraft] = useState<MouseShortcutBinding>({
-    input: "left",
+    input: "",
     enabled: true,
     wheelSteps: 1,
     modifiers: [],
@@ -445,7 +446,7 @@ function MouseShortcutDialog({
       return
     }
     setDraft({
-      input: availableInputs[0] ?? "left",
+      input: "",
       enabled: true,
       wheelSteps: 1,
       modifiers: [],
@@ -501,7 +502,7 @@ function MouseShortcutDialog({
                 }}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue />
+                  <SelectValue placeholder="选择鼠标输入" />
                 </SelectTrigger>
                 <SelectContent alignItemWithTrigger={false}>
                   <SelectGroup>
@@ -514,7 +515,7 @@ function MouseShortcutDialog({
                 </SelectContent>
               </Select>
               {duplicate && (
-                <FieldDescription>与已有鼠标快捷键冲突</FieldDescription>
+                <FieldError>与已有鼠标快捷键冲突</FieldError>
               )}
             </Field>
 
@@ -560,7 +561,8 @@ function MouseShortcutDialog({
             disabled={
               !availableInputs.includes(draft.input as MouseInput) ||
               duplicate ||
-              (bidirectional && !draft.oppositeAction)
+              !actionReady(draft.action) ||
+              (bidirectional && (!draft.oppositeAction || !actionReady(draft.oppositeAction)))
             }
             onClick={() => {
               onSave(draft)

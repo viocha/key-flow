@@ -856,9 +856,24 @@ func executePlatformActionContext(action Action, context ActionContext, keyInter
 	case ActionMouse:
 		return executeMouseAction(action)
 	case ActionVolume:
-		return adjustSystemVolume(action.Delta)
+		key := "VolumeUp"
+		count := action.Delta
+		if action.Delta < 0 {
+			key = "VolumeDown"
+			count = -count
+		}
+		for range count {
+			if err := sendKeyStrokeWithSuppressedModifiers([]string{key}, context.SuppressedModifiers); err != nil {
+				return err
+			}
+		}
+		return nil
 	case ActionBrightness:
-		return adjustDisplayBrightness(action.Delta)
+		percent, pt, err := adjustDisplayBrightness(action.Delta)
+		if err == nil {
+			showBrightnessFeedback(percent, pt)
+		}
+		return err
 	default:
 		return fmt.Errorf("Windows 暂不支持动作类型: %s", action.Type)
 	}

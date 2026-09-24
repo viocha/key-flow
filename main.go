@@ -34,6 +34,7 @@ func main() {
 	var managerMu sync.Mutex
 	var openManager func()
 	var overlay *nativeGestureOverlay
+	var brightnessFeedback *nativeBrightnessFeedback
 	app := application.New(application.Options{
 		Name:        "key-flow",
 		Description: "Key Flow",
@@ -63,6 +64,9 @@ func main() {
 			destroyTopmostBorders()
 			if overlay != nil {
 				overlay.Destroy()
+			}
+			if brightnessFeedback != nil {
+				brightnessFeedback.Destroy()
 			}
 		},
 	})
@@ -126,6 +130,7 @@ func main() {
 
 	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
 		overlay = createNativeGestureOverlay()
+		brightnessFeedback = createNativeBrightnessFeedback()
 		if err := engine.Start(); err != nil {
 			log.Printf("启动全局输入引擎失败: %v", err)
 		}
