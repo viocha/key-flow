@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,13 +24,19 @@ const (
 	wmClose                 = 0x0010
 	gwlExStyle              = -20
 	wsExTopmost             = 0x00000008
+	wsExToolWindow          = 0x00000080
+	wsExAppWindow           = 0x00040000
 	wsExLayered             = 0x00080000
+	wsExNoActivate          = 0x08000000
 	lwaAlpha                = 0x00000002
 	swpNoSize               = 0x0001
 	swpNoMove               = 0x0002
 	swpNoZOrder             = 0x0004
 	swpNoActivate           = 0x0010
 	monitorDefaultToNearest = 2
+	gwOwner                 = 4
+	dwmaCloaked             = 14
+	pmNoRemove              = 0x0000
 )
 
 var (
@@ -50,7 +57,15 @@ var (
 	procGetSystemMetrics           = user32.NewProc("GetSystemMetrics")
 	procIsWindow                   = user32.NewProc("IsWindow")
 	procIsIconic                   = user32.NewProc("IsIconic")
+	procEnumWindows                = user32.NewProc("EnumWindows")
+	procIsWindowVisible            = user32.NewProc("IsWindowVisible")
+	procGetWindow                  = user32.NewProc("GetWindow")
+	procGetShellWindow             = user32.NewProc("GetShellWindow")
+	procPeekMessageW               = user32.NewProc("PeekMessageW")
+	procAttachThreadInput          = user32.NewProc("AttachThreadInput")
+	procBringWindowToTop           = user32.NewProc("BringWindowToTop")
 	procSetForegroundWindow        = user32.NewProc("SetForegroundWindow")
+	procDwmGetWindowAttribute      = windows.NewLazySystemDLL("dwmapi.dll").NewProc("DwmGetWindowAttribute")
 	dxva2                          = windows.NewLazySystemDLL("dxva2.dll")
 	procGetNumberPhysicalMonitors  = dxva2.NewProc("GetNumberOfPhysicalMonitorsFromHMONITOR")
 	procGetPhysicalMonitors        = dxva2.NewProc("GetPhysicalMonitorsFromHMONITOR")
@@ -81,6 +96,9 @@ type physicalMonitor struct {
 var (
 	minimizedWindowsMu  sync.Mutex
 	minimizedWindows    []windows.Handle
+	windowSwitchMu      sync.Mutex
+	windowSwitchOrder   []windows.Handle
+	windowSwitchTarget  windows.Handle
 	verticalMaximizedMu sync.Mutex
 	verticalMaximized   = map[windows.Handle]struct{ original, applied rect }{}
 )
@@ -341,18 +359,188 @@ func restoreLastMinimizedWindow() {
 		if iconic == 0 {
 			continue
 		}
-		procShowWindow.Call(uintptr(hwnd), swRestore)
-		procSetForegroundWindow.Call(uintptr(hwnd))
+		_ = activateSwitchWindow(hwnd)
 		return
 	}
+}
+
+func switchableWindows() []windows.Handle {
+	shell, _, _ := procGetShellWindow.Call()
+	result := make([]windows.Handle, 0, 16)
+	callback := syscall.NewCallback(func(raw, _ uintptr) uintptr {
+		if raw == shell {
+			return 1
+		}
+		visible, _, _ := procIsWindowVisible.Call(raw)
+		if visible == 0 {
+			return 1
+		}
+		style, _, _ := procGetWindowLongPtrW.Call(raw, ^uintptr(19))
+		if style&wsExNoActivate != 0 {
+			return 1
+		}
+		if style&wsExToolWindow != 0 && style&wsExAppWindow == 0 {
+			return 1
+		}
+		owner, _, _ := procGetWindow.Call(raw, gwOwner)
+		if owner != 0 && style&wsExAppWindow == 0 {
+			return 1
+		}
+		length, _, _ := procGetWindowTextLengthW.Call(raw)
+		if length == 0 {
+			return 1
+		}
+		iconic, _, _ := procIsIconic.Call(raw)
+		if iconic == 0 {
+			var cloaked uint32
+			status, _, _ := procDwmGetWindowAttribute.Call(raw, dwmaCloaked, uintptr(unsafe.Pointer(&cloaked)), unsafe.Sizeof(cloaked))
+			if status == 0 && cloaked != 0 {
+				return 1
+			}
+		}
+		result = append(result, windows.Handle(raw))
+		return 1
+	})
+	procEnumWindows.Call(callback, 0)
+	return result
+}
+
+func sameWindows(a, b []windows.Handle) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	seen := make(map[windows.Handle]struct{}, len(a))
+	for _, hwnd := range a {
+		seen[hwnd] = struct{}{}
+	}
+	for _, hwnd := range b {
+		if _, ok := seen[hwnd]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func nextSwitchWindow(order []windows.Handle, current windows.Handle, direction int) windows.Handle {
+	if len(order) == 0 {
+		return 0
+	}
+	index := -1
+	for i, hwnd := range order {
+		if hwnd == current {
+			index = i
+			break
+		}
+	}
+	if index < 0 {
+		if direction > 0 {
+			return order[0]
+		}
+		return order[len(order)-1]
+	}
+	if len(order) == 1 {
+		return 0
+	}
+	return order[(index+direction+len(order))%len(order)]
+}
+
+func activateSwitchWindow(target windows.Handle) error {
+	if target == 0 {
+		return nil
+	}
+
+	// AttachThreadInput 绑定的是线程输入队列，因此整个激活过程必须固定在同一条 OS 线程上。
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	// 显式创建当前 worker 线程的消息队列。AttachThreadInput 在任一线程没有消息队列时会失败。
+	var message msg
+	procPeekMessageW.Call(uintptr(unsafe.Pointer(&message)), 0, 0, 0, pmNoRemove)
+
+	currentThread, _, _ := procGetCurrentThreadID.Call()
+	foreground, _, _ := procGetForegroundWindow.Call()
+	foregroundThread, _, _ := procGetWindowThreadProcessID.Call(foreground, 0)
+	targetThread, _, _ := procGetWindowThreadProcessID.Call(uintptr(target), 0)
+	if targetThread == 0 {
+		return fmt.Errorf("无法获取目标窗口线程")
+	}
+
+	attachedForeground := false
+	if foregroundThread != 0 && foregroundThread != currentThread {
+		ok, _, callErr := procAttachThreadInput.Call(currentThread, foregroundThread, 1)
+		if ok == 0 {
+			return fmt.Errorf("关联前台输入线程失败: %v", callErr)
+		}
+		attachedForeground = true
+	}
+	defer func() {
+		if attachedForeground {
+			procAttachThreadInput.Call(currentThread, foregroundThread, 0)
+		}
+	}()
+
+	attachedTarget := false
+	if targetThread != currentThread && targetThread != foregroundThread {
+		ok, _, callErr := procAttachThreadInput.Call(currentThread, targetThread, 1)
+		if ok == 0 {
+			return fmt.Errorf("关联目标输入线程失败: %v", callErr)
+		}
+		attachedTarget = true
+	}
+	defer func() {
+		if attachedTarget {
+			procAttachThreadInput.Call(currentThread, targetThread, 0)
+		}
+	}()
+
+	// 此时当前线程与前台/目标窗口共享输入队列；先取得前台，再恢复最小化状态。
+	// 不调用 SwitchToThisWindow，避免 Shell 把切换当成 Alt-Tab 风格的注意提示。
+	ok, _, callErr := procSetForegroundWindow.Call(uintptr(target))
+	active, _, _ := procGetForegroundWindow.Call()
+	if ok == 0 || active != uintptr(target) {
+		return fmt.Errorf("切换前台窗口失败: %v", callErr)
+	}
+
+	iconic, _, _ := procIsIconic.Call(uintptr(target))
+	if iconic != 0 {
+		procShowWindow.Call(uintptr(target), swRestore)
+	}
+	procBringWindowToTop.Call(uintptr(target))
+
+	active, _, _ = procGetForegroundWindow.Call()
+	if active != uintptr(target) {
+		return fmt.Errorf("窗口已恢复但未保持前台")
+	}
+	return nil
+}
+
+func switchWindow(direction int) error {
+	windowSwitchMu.Lock()
+	defer windowSwitchMu.Unlock()
+
+	available := switchableWindows()
+	foreground, _, _ := procGetForegroundWindow.Call()
+	current := windows.Handle(foreground)
+	if current != windowSwitchTarget || !sameWindows(windowSwitchOrder, available) {
+		windowSwitchOrder = available
+	}
+	target := nextSwitchWindow(windowSwitchOrder, current, direction)
+	if target == 0 {
+		return nil
+	}
+	if err := activateSwitchWindow(target); err != nil {
+		return err
+	}
+	windowSwitchTarget = target
+	return nil
 }
 
 func executeWindowActionForWindow(action Action, hwnd windows.Handle) error {
 	switch action.WindowCommand {
 	case "previousWindow":
-		return sendKeyStroke([]string{"Alt", "Shift", "Escape"})
+		return switchWindow(-1)
 	case "nextWindow":
-		return sendKeyStroke([]string{"Alt", "Escape"})
+		return switchWindow(1)
 	case "restoreMinimized":
 		restoreLastMinimizedWindow()
 		return nil
