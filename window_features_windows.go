@@ -21,6 +21,7 @@ const (
 	swMinimize              = 6
 	swMaximize              = 3
 	swRestore               = 9
+	swShowNoActivate        = 4
 	wmClose                 = 0x0010
 	gwlExStyle              = -20
 	wsExTopmost             = 0x00000008
@@ -163,22 +164,13 @@ func beginWindowManipulation(mode WindowManipulationMode, pt point, hwnd windows
 
 	zoomed, _, _ := procIsZoomed.Call(uintptr(hwnd))
 	if zoomed != 0 {
-		procShowWindow.Call(uintptr(hwnd), swRestore)
+		// 还原最大化窗口时保留当前前台窗口。
+		procShowWindow.Call(uintptr(hwnd), swShowNoActivate)
 	}
 	value, err := getWindowRect(hwnd)
 	if err != nil {
 		return nil, err
 	}
-	procSetWindowPos.Call(
-		uintptr(hwnd),
-		0,
-		0,
-		0,
-		0,
-		0,
-		swpNoMove|swpNoSize|swpNoActivate,
-	)
-
 	session := &windowManipulation{
 		hwnd:      hwnd,
 		mode:      mode,
