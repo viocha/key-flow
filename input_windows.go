@@ -308,6 +308,17 @@ func startPlatformInputEngine(engine *InputEngine) (func(), error) {
 			return
 		}
 
+		stopHistory, historyErr := startWindowHistory()
+		if historyErr != nil {
+			procUnhookWindowsHookEx.Call(mouseHook)
+			procUnhookWindowsHookEx.Call(keyboardHook)
+			if cursorWindow != 0 {
+				procDestroyWindow.Call(uintptr(cursorWindow))
+			}
+			ready <- historyErr
+			return
+		}
+		defer stopHistory()
 		state.mu.Lock()
 		state.keyboardHook = windows.Handle(keyboardHook)
 		state.mouseHook = windows.Handle(mouseHook)

@@ -98,8 +98,9 @@ var (
 	minimizedWindowsMu  sync.Mutex
 	minimizedWindows    []windows.Handle
 	windowSwitchMu      sync.Mutex
-	windowSwitchOrder   []windows.Handle
-	windowSwitchTarget  windows.Handle
+	windowNavigationMu  sync.Mutex
+	windowNavigating    bool
+	windowHistory       activationHistory
 	verticalMaximizedMu sync.Mutex
 	verticalMaximized   = map[windows.Handle]struct{ original, applied rect }{}
 )
@@ -397,45 +398,6 @@ func switchableWindows() []windows.Handle {
 	return result
 }
 
-func sameWindows(a, b []windows.Handle) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	seen := make(map[windows.Handle]struct{}, len(a))
-	for _, hwnd := range a {
-		seen[hwnd] = struct{}{}
-	}
-	for _, hwnd := range b {
-		if _, ok := seen[hwnd]; !ok {
-			return false
-		}
-	}
-	return true
-}
-
-func nextSwitchWindow(order []windows.Handle, current windows.Handle, direction int) windows.Handle {
-	if len(order) == 0 {
-		return 0
-	}
-	index := -1
-	for i, hwnd := range order {
-		if hwnd == current {
-			index = i
-			break
-		}
-	}
-	if index < 0 {
-		if direction > 0 {
-			return order[0]
-		}
-		return order[len(order)-1]
-	}
-	if len(order) == 1 {
-		return 0
-	}
-	return order[(index+direction+len(order))%len(order)]
-}
-
 func activateSwitchWindow(target windows.Handle) error {
 	if target == 0 {
 		return nil
@@ -507,24 +469,34 @@ func activateSwitchWindow(target windows.Handle) error {
 }
 
 func switchWindow(direction int) error {
+	windowNavigationMu.Lock()
+	defer windowNavigationMu.Unlock()
 	windowSwitchMu.Lock()
-	defer windowSwitchMu.Unlock()
 
 	available := switchableWindows()
 	foreground, _, _ := procGetForegroundWindow.Call()
 	current := windows.Handle(foreground)
-	if current != windowSwitchTarget || !sameWindows(windowSwitchOrder, available) {
-		windowSwitchOrder = available
-	}
-	target := nextSwitchWindow(windowSwitchOrder, current, direction)
+	windowHistory.prune(available)
+	windowHistory.observe(current, available)
+	target, index := windowHistory.target(direction)
 	if target == 0 {
+		windowSwitchMu.Unlock()
 		return nil
 	}
-	if err := activateSwitchWindow(target); err != nil {
-		return err
+	windowNavigating = true
+	windowSwitchMu.Unlock()
+	// 激活期间不持有历史锁，避免阻塞负责系统事件和输入 Hook 的线程。
+	err := activateSwitchWindow(target)
+	windowSwitchMu.Lock()
+	defer windowSwitchMu.Unlock()
+	windowNavigating = false
+	if err == nil {
+		windowHistory.index = index
+	} else {
+		foreground, _, _ = procGetForegroundWindow.Call()
+		windowHistory.observe(windows.Handle(foreground), switchableWindows())
 	}
-	windowSwitchTarget = target
-	return nil
+	return err
 }
 
 func executeWindowActionForWindow(action Action, hwnd windows.Handle) error {
