@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"unsafe"
 
@@ -357,45 +358,62 @@ func restoreLastMinimizedWindow() {
 	}
 }
 
+type windowEnumeration struct {
+	shell  uintptr
+	result []windows.Handle
+}
+
+// Windows 回调槽位不会释放；复用回调，通过令牌隔离每次同步枚举的数据。
+var windowEnumerations sync.Map
+var windowEnumerationID atomic.Uintptr
+var switchableWindowCallback = syscall.NewCallback(func(raw, token uintptr) uintptr {
+	value, ok := windowEnumerations.Load(token)
+	if !ok {
+		return 0
+	}
+	enumeration := value.(*windowEnumeration)
+	if raw == enumeration.shell {
+		return 1
+	}
+	visible, _, _ := procIsWindowVisible.Call(raw)
+	if visible == 0 {
+		return 1
+	}
+	style, _, _ := procGetWindowLongPtrW.Call(raw, ^uintptr(19))
+	if style&wsExNoActivate != 0 {
+		return 1
+	}
+	if style&wsExToolWindow != 0 && style&wsExAppWindow == 0 {
+		return 1
+	}
+	owner, _, _ := procGetWindow.Call(raw, gwOwner)
+	if owner != 0 && style&wsExAppWindow == 0 {
+		return 1
+	}
+	length, _, _ := procGetWindowTextLengthW.Call(raw)
+	if length == 0 {
+		return 1
+	}
+	iconic, _, _ := procIsIconic.Call(raw)
+	if iconic == 0 {
+		var cloaked uint32
+		status, _, _ := procDwmGetWindowAttribute.Call(raw, dwmaCloaked, uintptr(unsafe.Pointer(&cloaked)), unsafe.Sizeof(cloaked))
+		if status == 0 && cloaked != 0 {
+			return 1
+		}
+	}
+	enumeration.result = append(enumeration.result, windows.Handle(raw))
+	return 1
+})
+
 func switchableWindows() []windows.Handle {
 	shell, _, _ := procGetShellWindow.Call()
-	result := make([]windows.Handle, 0, 16)
-	callback := syscall.NewCallback(func(raw, _ uintptr) uintptr {
-		if raw == shell {
-			return 1
-		}
-		visible, _, _ := procIsWindowVisible.Call(raw)
-		if visible == 0 {
-			return 1
-		}
-		style, _, _ := procGetWindowLongPtrW.Call(raw, ^uintptr(19))
-		if style&wsExNoActivate != 0 {
-			return 1
-		}
-		if style&wsExToolWindow != 0 && style&wsExAppWindow == 0 {
-			return 1
-		}
-		owner, _, _ := procGetWindow.Call(raw, gwOwner)
-		if owner != 0 && style&wsExAppWindow == 0 {
-			return 1
-		}
-		length, _, _ := procGetWindowTextLengthW.Call(raw)
-		if length == 0 {
-			return 1
-		}
-		iconic, _, _ := procIsIconic.Call(raw)
-		if iconic == 0 {
-			var cloaked uint32
-			status, _, _ := procDwmGetWindowAttribute.Call(raw, dwmaCloaked, uintptr(unsafe.Pointer(&cloaked)), unsafe.Sizeof(cloaked))
-			if status == 0 && cloaked != 0 {
-				return 1
-			}
-		}
-		result = append(result, windows.Handle(raw))
-		return 1
-	})
-	procEnumWindows.Call(callback, 0)
-	return result
+	enumeration := &windowEnumeration{shell: shell, result: make([]windows.Handle, 0, 16)}
+	token := windowEnumerationID.Add(1)
+	windowEnumerations.Store(token, enumeration)
+	defer windowEnumerations.Delete(token)
+	procEnumWindows.Call(switchableWindowCallback, token)
+	return enumeration.result
 }
 
 func activateSwitchWindow(target windows.Handle) error {

@@ -7,6 +7,17 @@ import (
 	"testing"
 )
 
+// 超过 Go 回调槽位上限的枚举次数，用于验证回调不会随调用累积。
+func TestSwitchableWindowsCallbackReuse(t *testing.T) {
+	for i := 0; i < 2100; i++ {
+		switchableWindows()
+	}
+	windowEnumerations.Range(func(key, value any) bool {
+		t.Error("枚举上下文未释放")
+		return false
+	})
+}
+
 func TestWindowHistoryBackAndForward(t *testing.T) {
 	available := []windows.Handle{1, 2, 3, 4, 5, 6}
 	h := activationHistory{}
