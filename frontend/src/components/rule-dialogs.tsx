@@ -112,8 +112,8 @@ export function ShortcutDialog({
         <DialogHeader>
           <DialogTitle>{rule ? "编辑快捷键" : "添加快捷键"}</DialogTitle>
         </DialogHeader>
-        <ScrollArea className="-mr-3 min-h-0">
-          <div className="p-1 pr-4">
+        <ScrollArea gutter="dialog" className="min-h-0">
+          <div className="p-1">
             <FieldGroup>
             <Field>
               <FieldLabel>输入类型</FieldLabel>
@@ -439,8 +439,8 @@ export function BindingDialog({
         <DialogHeader>
           <DialogTitle>{binding ? "编辑按键映射" : "添加按键映射"}</DialogTitle>
         </DialogHeader>
-        <ScrollArea className="-mr-3 min-h-0">
-          <div className="p-1 pr-4">
+        <ScrollArea gutter="dialog" className="min-h-0">
+          <div className="p-1">
             <FieldGroup>
             <Field>
               <FieldLabel>触发按键</FieldLabel>

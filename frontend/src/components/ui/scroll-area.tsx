@@ -7,17 +7,25 @@ import { cn } from "cn"
 function ScrollArea({
   className,
   children,
+  gutter = "default",
   ...props
-}: ScrollAreaPrimitive.Root.Props) {
+}: ScrollAreaPrimitive.Root.Props & {
+  gutter?: "default" | "dialog"
+}) {
   return (
     <ScrollAreaPrimitive.Root
       data-slot="scroll-area"
-      className={cn("relative", className)}
+      data-gutter={gutter}
+      className={cn(
+        "relative min-w-0",
+        className,
+        gutter === "dialog" && "-mr-4 w-auto pr-4"
+      )}
       {...props}
     >
       <ScrollAreaPrimitive.Viewport
         data-slot="scroll-area-viewport"
-        className="size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1"
+        className="size-full min-w-0 rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1"
       >
         {children}
       </ScrollAreaPrimitive.Viewport>
@@ -38,7 +46,7 @@ function ScrollBar({
       data-orientation={orientation}
       orientation={orientation}
       className={cn(
-        "absolute z-10 flex touch-none p-px transition-colors select-none data-horizontal:inset-x-0 data-horizontal:bottom-0 data-horizontal:h-2 data-horizontal:flex-col data-vertical:inset-y-0 data-vertical:right-0 data-vertical:w-2",
+        "flex touch-none p-px transition-colors select-none data-horizontal:h-2.5 data-horizontal:flex-col data-horizontal:border-t data-horizontal:border-t-transparent data-vertical:h-full data-vertical:w-2.5 data-vertical:border-l data-vertical:border-l-transparent",
         className
       )}
       {...props}

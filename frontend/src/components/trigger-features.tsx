@@ -475,8 +475,8 @@ function MouseShortcutDialog({
           </DialogTitle>
         </DialogHeader>
 
-        <ScrollArea className="-mr-3 min-h-0">
-          <div className="flex flex-col gap-4 p-1 pr-4">
+        <ScrollArea gutter="dialog" className="min-h-0">
+          <div className="flex flex-col gap-4 p-1">
             <Field>
               <FieldLabel>鼠标输入</FieldLabel>
               <Select

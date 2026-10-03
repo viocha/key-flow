@@ -248,8 +248,8 @@ export function GestureDialog({
         <DialogHeader>
           <DialogTitle>{binding ? "编辑手势" : "添加手势"}</DialogTitle>
         </DialogHeader>
-        <ScrollArea className="-mr-3 min-h-0">
-          <div className="p-1 pr-4">
+        <ScrollArea gutter="dialog" className="min-h-0">
+          <div className="p-1">
             <FieldGroup>
               <Field>
                 <FieldLabel>路径</FieldLabel>
@@ -371,8 +371,8 @@ export function EdgeWheelDialog({
           <DialogTitle>{rule ? "编辑屏幕边缘" : "添加屏幕边缘"}</DialogTitle>
         </DialogHeader>
 
-        <ScrollArea className="-mr-3 min-h-0">
-          <div className="p-1 pr-4">
+        <ScrollArea gutter="dialog" className="min-h-0">
+          <div className="p-1">
             <FieldGroup>
               <Field>
                 <FieldLabel>方位</FieldLabel>

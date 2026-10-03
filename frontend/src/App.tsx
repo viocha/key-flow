@@ -78,6 +78,7 @@ import {
 } from "@/components/ui/sidebar"
 import { Switch } from "@/components/ui/switch"
 import { toast } from "@/components/ui/toast"
+import { cn } from "@/lib/utils"
 import {
   actionSummary,
   activeProfile,
@@ -625,35 +626,42 @@ function App() {
 
       <SidebarInset className="h-svh min-h-0 overflow-hidden bg-muted/20">
         <div className="min-h-0 flex-1">
-            {navigation === "general" && (
-              <HotkeysPanel
-                profile={profile}
-                onEnabledChange={(hotkeysEnabled) =>
-                  updateProfile((current) => ({
-                    ...current,
-                    hotkeysEnabled,
-                  }))
-                }
-                onAdd={() => setShortcutDialog({ open: true })}
-                onEdit={(rule) => setShortcutDialog({ open: true, rule })}
-                onToggle={(id, enabled) =>
-                  updateProfile((current) => ({
-                    ...current,
-                    hotkeys: current.hotkeys.map((item) =>
-                      item.id === id ? { ...item, enabled } : item,
-                    ),
-                  }))
-                }
-                onDelete={deleteHotkey}
-                onReorder={(hotkeys) =>
-                  updateProfile((current) => ({ ...current, hotkeys }))
-                }
-              />
-            )}
+          <div className={cn("h-full min-h-0", navigation !== "general" && "hidden")}>
+            <HotkeysPanel
+              profile={profile}
+              onEnabledChange={(hotkeysEnabled) =>
+                updateProfile((current) => ({
+                  ...current,
+                  hotkeysEnabled,
+                }))
+              }
+              onAdd={() => setShortcutDialog({ open: true })}
+              onEdit={(rule) => setShortcutDialog({ open: true, rule })}
+              onToggle={(id, enabled) =>
+                updateProfile((current) => ({
+                  ...current,
+                  hotkeys: current.hotkeys.map((item) =>
+                    item.id === id ? { ...item, enabled } : item,
+                  ),
+                }))
+              }
+              onDelete={deleteHotkey}
+              onReorder={(hotkeys) =>
+                updateProfile((current) => ({ ...current, hotkeys }))
+              }
+            />
+          </div>
 
-            {selectedLayer && (
+          {profile.layers.map((layer) => (
+            <div
+              key={layer.id}
+              className={cn(
+                "h-full min-h-0",
+                navigation !== `layer:${layer.id}` && "hidden",
+              )}
+            >
               <LayerPanel
-                layer={selectedLayer}
+                layer={layer}
                 presets={presets}
                 onChange={(next) =>
                   updateProfile((current) => ({
@@ -663,80 +671,85 @@ function App() {
                     ),
                   }))
                 }
-                onEdit={() =>
-                  setLayerDialog({ open: true, layer: selectedLayer })
-                }
+                onEdit={() => setLayerDialog({ open: true, layer })}
                 onToggle={(enabled) =>
                   updateProfile((current) => ({
                     ...current,
                     layers: current.layers.map((item) =>
-                      item.id === selectedLayer.id
-                        ? { ...item, enabled }
-                        : item,
+                      item.id === layer.id ? { ...item, enabled } : item,
                     ),
                   }))
                 }
-                onDelete={() => deleteLayer(selectedLayer.id)}
+                onDelete={() => deleteLayer(layer.id)}
                 onAddBinding={() =>
-                  setBindingDialog({ open: true, layerId: selectedLayer.id })
+                  setBindingDialog({ open: true, layerId: layer.id })
                 }
                 onEditBinding={(binding) =>
                   setBindingDialog({
                     open: true,
-                    layerId: selectedLayer.id,
+                    layerId: layer.id,
                     binding,
                   })
                 }
                 onDeleteBinding={(bindingId) =>
-                  deleteLayerBinding(selectedLayer.id, bindingId)
+                  deleteLayerBinding(layer.id, bindingId)
                 }
               />
-            )}
+            </div>
+          ))}
 
-            {selectedGesture && (
+          {profile.gestures.map((group) => (
+            <div
+              key={group.id}
+              className={cn(
+                "h-full min-h-0",
+                navigation !== `gesture:${group.id}` && "hidden",
+              )}
+            >
               <GestureGroupPanel
-                group={selectedGesture}
+                group={group}
                 presets={presets}
                 onChange={saveGestureGroup}
                 onEdit={() =>
                   setGestureGroupDialog({
                     open: true,
-                    group: selectedGesture,
+                    group,
                     isNew: false,
                   })
                 }
-                onDelete={() => deleteGestureGroup(selectedGesture.id)}
+                onDelete={() => deleteGestureGroup(group.id)}
               />
-            )}
+            </div>
+          ))}
 
-            {navigation === "edges" && (
-              <EdgeWheelPanel
-                enabled={profile.edgeWheelsEnabled}
-                marginPx={profile.edgeWheelMarginPx}
-                rules={profile.edgeWheels}
-                presets={presets}
-                onEnabledChange={(edgeWheelsEnabled) =>
-                  updateProfile((current) => ({
-                    ...current,
-                    edgeWheelsEnabled,
-                  }))
-                }
-                onMarginChange={(edgeWheelMarginPx) =>
-                  updateProfile((current) => ({
-                    ...current,
-                    edgeWheelMarginPx,
-                  }))
-                }
-                onChange={(edgeWheels) =>
-                  updateProfile((current) => ({
-                    ...current,
-                    edgeWheels,
-                  }))
-                }
-              />
-            )}
+          <div className={cn("h-full min-h-0", navigation !== "edges" && "hidden")}>
+            <EdgeWheelPanel
+              enabled={profile.edgeWheelsEnabled}
+              marginPx={profile.edgeWheelMarginPx}
+              rules={profile.edgeWheels}
+              presets={presets}
+              onEnabledChange={(edgeWheelsEnabled) =>
+                updateProfile((current) => ({
+                  ...current,
+                  edgeWheelsEnabled,
+                }))
+              }
+              onMarginChange={(edgeWheelMarginPx) =>
+                updateProfile((current) => ({
+                  ...current,
+                  edgeWheelMarginPx,
+                }))
+              }
+              onChange={(edgeWheels) =>
+                updateProfile((current) => ({
+                  ...current,
+                  edgeWheels,
+                }))
+              }
+            />
+          </div>
 
-          {navigation === "settings" && (
+          <div className={cn("h-full min-h-0", navigation !== "settings" && "hidden")}>
             <PanelLayout
               header={<h1 className="font-heading text-lg font-semibold">设置</h1>}
             >
@@ -748,7 +761,7 @@ function App() {
                 onChange={setConfig}
               />
             </PanelLayout>
-          )}
+          </div>
         </div>
       </SidebarInset>
 
