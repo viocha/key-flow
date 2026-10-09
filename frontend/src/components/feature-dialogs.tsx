@@ -217,6 +217,7 @@ export function GestureDialog({
   open,
   binding,
   existingBindings,
+  segmentDistance,
   presets,
   onClose,
   onSave,
@@ -224,6 +225,7 @@ export function GestureDialog({
   open: boolean
   binding?: GestureBinding
   existingBindings: GestureBinding[]
+  segmentDistance: number
   presets: ActionPreset[]
   onClose: () => void
   onSave: (binding: GestureBinding) => void
@@ -256,6 +258,7 @@ export function GestureDialog({
                 <GestureRecorder
                   preview={draft.preview}
                   directions={draft.directions}
+                  segmentDistance={segmentDistance}
                   onChange={(preview, directions) =>
                     setDraft({ ...draft, preview, directions })
                   }

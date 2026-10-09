@@ -4,25 +4,27 @@ import type { GesturePoint } from "../../bindings/key-flow"
 import { GestureEndpointArrow } from "@/components/gesture-endpoint-arrow"
 import { useInputCapture } from "@/hooks/use-input-capture"
 import { gestureDirectionLabel } from "@/lib/app-model"
+import { directionsFromPoints, type GestureSample } from "@/lib/gesture-recognition"
 
-type RawPoint = {
-  x: number
-  y: number
+type Drawing = {
+  pointerId: number
+  pixelRatio: number
+  points: GestureSample[]
 }
 
 export function GestureRecorder({
   preview,
   directions,
+  segmentDistance,
   onChange,
 }: {
   preview?: GesturePoint[] | null
   directions?: string[] | null
+  segmentDistance: number
   onChange: (preview: GesturePoint[], directions: string[]) => void
 }) {
-  const [drawing, setDrawing] = useState<{
-    pointerId: number
-    points: RawPoint[]
-  } | null>(null)
+  const [drawing, setDrawing] = useState<Drawing | null>(null)
+  const drawingRef = useRef<Drawing | null>(null)
   const boxRef = useRef<HTMLDivElement>(null)
   const { begin: beginInputCapture, end: endInputCapture } = useInputCapture()
 
@@ -34,16 +36,21 @@ export function GestureRecorder({
       y: clamp01((point.y - rect.top) / Math.max(1, rect.height)),
     }))
   }, [drawing, preview])
-  const visibleDirections = drawing
-    ? directionsFromPoints(drawing.points)
-    : (directions ?? [])
+  const visibleDirections = useMemo(() => drawing
+    ? directionsFromPoints(drawing.points, segmentDistance, drawing.pixelRatio)
+    : (directions ?? []), [drawing, directions, segmentDistance])
   const endpoint = visiblePreview[visiblePreview.length - 1]
   const endpointDirection = visibleDirections[visibleDirections.length - 1]
 
-  const finish = (points: RawPoint[]) => {
+  const updateDrawing = (next: Drawing | null) => {
+    drawingRef.current = next
+    setDrawing(next)
+  }
+
+  const finish = (points: GestureSample[], pixelRatio: number) => {
     const element = boxRef.current
     if (!element || points.length < 2) {
-      setDrawing(null)
+      updateDrawing(null)
       return
     }
     const rect = element.getBoundingClientRect()
@@ -51,8 +58,8 @@ export function GestureRecorder({
       x: clamp01((point.x - rect.left) / Math.max(1, rect.width)),
       y: clamp01((point.y - rect.top) / Math.max(1, rect.height)),
     }))
-    onChange(normalized, directionsFromPoints(points))
-    setDrawing(null)
+    onChange(normalized, directionsFromPoints(points, segmentDistance, pixelRatio))
+    updateDrawing(null)
   }
 
   return (
@@ -67,41 +74,29 @@ export function GestureRecorder({
         onPointerDown={(event) => {
           event.preventDefault()
           event.currentTarget.setPointerCapture(event.pointerId)
-          setDrawing({
+          updateDrawing({
             pointerId: event.pointerId,
+            pixelRatio: window.devicePixelRatio,
             points: [{ x: event.clientX, y: event.clientY }],
           })
         }}
         onPointerMove={(event) => {
-          setDrawing((current) => {
-            if (!current || current.pointerId !== event.pointerId) return current
-            const last = current.points[current.points.length - 1]
-            if (Math.hypot(event.clientX - last.x, event.clientY - last.y) < 2) {
-              return current
-            }
-            return {
-              ...current,
-              points: [
-                ...current.points,
-                { x: event.clientX, y: event.clientY },
-              ],
-            }
+          const current = drawingRef.current
+          if (!current || current.pointerId !== event.pointerId) return
+          const last = current.points[current.points.length - 1]
+          if (Math.hypot(event.clientX - last.x, event.clientY - last.y) * current.pixelRatio < 2) return
+          updateDrawing({
+            ...current,
+            points: [...current.points, { x: event.clientX, y: event.clientY }],
           })
         }}
         onPointerUp={(event) => {
-          setDrawing((current) => {
-            if (current?.pointerId === event.pointerId) {
-              const points = [
-                ...current.points,
-                { x: event.clientX, y: event.clientY },
-              ]
-              queueMicrotask(() => finish(points))
-            }
-            return current
-          })
+          const current = drawingRef.current
+          if (current?.pointerId !== event.pointerId) return
+          finish([...current.points, { x: event.clientX, y: event.clientY }], current.pixelRatio)
         }}
         onPointerCancel={() => {
-          setDrawing(null)
+          updateDrawing(null)
           endInputCapture()
         }}
       >
@@ -142,8 +137,8 @@ export function GestureRecorder({
         )}
       </div>
       <div className="min-h-5 text-xs text-muted-foreground">
-        {directions?.length
-          ? gestureDirectionLabel(directions)
+        {visibleDirections.length
+          ? gestureDirectionLabel(visibleDirections)
           : drawing
             ? "正在录制"
             : "尚未录制"}
@@ -154,118 +149,4 @@ export function GestureRecorder({
 
 function clamp01(value: number) {
   return Math.max(0, Math.min(1, value))
-}
-
-function directionsFromPoints(points: RawPoint[]) {
-  if (points.length < 2) return []
-
-  const segments: { direction: string; distance: number }[] = []
-  let anchor = points[0]
-  const threshold = 24
-  const terminalTurnThreshold = 36
-
-  for (const point of points.slice(1)) {
-    const dx = point.x - anchor.x
-    const dy = point.y - anchor.y
-    const distance = Math.hypot(dx, dy)
-    if (distance < threshold) continue
-
-    const direction = quantizeDirection(dx, dy)
-    const last = segments[segments.length - 1]
-    if (last?.direction === direction) {
-      last.distance += distance
-    } else {
-      segments.push({ direction, distance })
-    }
-    anchor = point
-  }
-
-  // 收手时常会产生一小段横向或斜向抖动。方向发生变化后需要再持续
-  // 一段距离才把它视为有效的末段，避免污染保存结果和终点箭头。
-  if (
-    segments.length > 1 &&
-    segments[segments.length - 1].distance < terminalTurnThreshold
-  ) {
-    segments.pop()
-  }
-
-  return simplifyDirections(segments.map((segment) => segment.direction))
-}
-
-function simplifyDirections(directions: string[]) {
-  let result = [...directions]
-
-  while (true) {
-    const clean = result.filter(
-      (direction, index) => index === 0 || direction !== result[index - 1],
-    )
-    result = clean
-
-    let changed = false
-    for (let index = 1; index + 1 < result.length; index += 1) {
-      const previous = result[index - 1]
-      const current = result[index]
-      const next = result[index + 1]
-
-      if (
-        previous === next &&
-        areAdjacentDirections(previous, current)
-      ) {
-        result.splice(index, 1)
-        changed = true
-        break
-      }
-
-      if (isCardinal(previous) && isDiagonal(current) && isCardinal(next)) {
-        const pair = previous + "," + current + "," + next
-        if (
-          pair === "D,DR,R" ||
-          pair === "R,DR,D" ||
-          pair === "D,DL,L" ||
-          pair === "L,DL,D" ||
-          pair === "U,UR,R" ||
-          pair === "R,UR,U" ||
-          pair === "U,UL,L" ||
-          pair === "L,UL,U"
-        ) {
-          result.splice(index, 1)
-          changed = true
-          break
-        }
-      }
-    }
-
-    if (!changed) return result
-  }
-}
-
-function isCardinal(direction: string) {
-  return direction === "U" || direction === "D" || direction === "L" || direction === "R"
-}
-
-function isDiagonal(direction: string) {
-  return direction === "UL" || direction === "UR" || direction === "DL" || direction === "DR"
-}
-
-function areAdjacentDirections(a: string, b: string) {
-  const order = ["R", "UR", "U", "UL", "L", "DL", "D", "DR"]
-  const aIndex = order.indexOf(a)
-  const bIndex = order.indexOf(b)
-  if (aIndex < 0 || bIndex < 0) return false
-  const difference = Math.abs(aIndex - bIndex)
-  return difference === 1 || difference === 7
-}
-
-function quantizeDirection(dx: number, dy: number) {
-  let angle = (Math.atan2(-dy, dx) * 180) / Math.PI
-  if (angle < 0) angle += 360
-
-  if (angle >= 330 || angle < 30) return "R"
-  if (angle < 60) return "UR"
-  if (angle < 120) return "U"
-  if (angle < 150) return "UL"
-  if (angle < 210) return "L"
-  if (angle < 240) return "DL"
-  if (angle < 300) return "D"
-  return "DR"
 }

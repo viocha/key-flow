@@ -79,22 +79,71 @@ func gestureDirectionsFromPoints(points []GesturePoint, segmentDistance float64)
 	if segmentDistance < 1 {
 		segmentDistance = 1
 	}
+	// 先保留有意义的拐点，直线附近半个分段距离内的偏移视为手抖。
+	// 使用整条线段的净位移，避免在转弯起步时放大局部的斜向抖动。
+	points = simplifyGesturePoints(points, segmentDistance/2)
 	result := make([]string, 0, 8)
 	anchor := points[0]
 	for i := 1; i < len(points); i++ {
 		current := points[i]
 		dx := current.X - anchor.X
 		dy := current.Y - anchor.Y
-		if math.Hypot(dx, dy) < segmentDistance {
+		direction := quantizeGestureDirection(dx, dy)
+		confirmationDistance := segmentDistance
+		// 斜向需要多积累 40% 的净位移，避免转弯起步的抖动过早确认方向。
+		if isDiagonalGestureDirection(direction) {
+			confirmationDistance *= 1.4
+		}
+		if math.Hypot(dx, dy) < confirmationDistance {
 			continue
 		}
-		direction := quantizeGestureDirection(dx, dy)
 		if direction != "" && (len(result) == 0 || result[len(result)-1] != direction) {
 			result = append(result, direction)
 		}
 		anchor = current
 	}
 	return simplifyGestureDirections(result)
+}
+
+// 使用到有限线段的距离，保留折返及闭合路径中的有效拐点。
+func simplifyGesturePoints(points []GesturePoint, tolerance float64) []GesturePoint {
+	if len(points) < 3 {
+		return points
+	}
+	keep := make([]bool, len(points))
+	keep[0], keep[len(points)-1] = true, true
+	ranges := [][2]int{{0, len(points) - 1}}
+	for len(ranges) > 0 {
+		span := ranges[len(ranges)-1]
+		ranges = ranges[:len(ranges)-1]
+		start, end := points[span[0]], points[span[1]]
+		dx, dy := end.X-start.X, end.Y-start.Y
+		lengthSquared := dx*dx + dy*dy
+		farthest, maxDistanceSquared := -1, tolerance*tolerance
+		for i := span[0] + 1; i < span[1]; i++ {
+			point := points[i]
+			projection := 0.0
+			if lengthSquared > 0 {
+				projection = math.Max(0, math.Min(1,
+					((point.X-start.X)*dx+(point.Y-start.Y)*dy)/lengthSquared))
+			}
+			x, y := point.X-start.X-projection*dx, point.Y-start.Y-projection*dy
+			if distanceSquared := x*x + y*y; distanceSquared > maxDistanceSquared {
+				farthest, maxDistanceSquared = i, distanceSquared
+			}
+		}
+		if farthest >= 0 {
+			keep[farthest] = true
+			ranges = append(ranges, [2]int{span[0], farthest}, [2]int{farthest, span[1]})
+		}
+	}
+	result := make([]GesturePoint, 0, len(points))
+	for i, point := range points {
+		if keep[i] {
+			result = append(result, point)
+		}
+	}
+	return result
 }
 
 func simplifyGestureDirections(directions []string) []string {
@@ -201,22 +250,21 @@ func quantizeGestureDirection(dx, dy float64) string {
 	if angle < 0 {
 		angle += 360
 	}
-	// 直向区域给 60°，对角区域给 30°。鼠标手势通常更接近
-	// “往下/往右”的意图，这比八等分更能容忍自然的斜偏和圆角。
+	// 直向区域给 70°，对角区域给 20°，容忍直线的自然斜偏并保留 45° 手势。
 	switch {
-	case angle >= 330 || angle < 30:
+	case angle >= 325 || angle < 35:
 		return "R"
-	case angle < 60:
+	case angle < 55:
 		return "UR"
-	case angle < 120:
+	case angle < 125:
 		return "U"
-	case angle < 150:
+	case angle < 145:
 		return "UL"
-	case angle < 210:
+	case angle < 215:
 		return "L"
-	case angle < 240:
+	case angle < 235:
 		return "DL"
-	case angle < 300:
+	case angle < 305:
 		return "D"
 	default:
 		return "DR"

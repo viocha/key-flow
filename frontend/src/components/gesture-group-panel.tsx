@@ -265,6 +265,7 @@ export function GestureGroupPanel({
         open={dialog.open}
         binding={dialog.open ? dialog.binding : undefined}
         existingBindings={group.bindings}
+        segmentDistance={group.segmentDistancePx}
         presets={presets}
         onClose={() => setDialog({ open: false })}
         onSave={saveBinding}

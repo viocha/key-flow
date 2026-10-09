@@ -1,6 +1,38 @@
 package main
 
-import "testing"
+import (
+	"encoding/json"
+	"os"
+	"slices"
+	"testing"
+)
+
+func TestGestureRecognitionFixtures(t *testing.T) {
+	data, err := os.ReadFile("testdata/gesture-recognition.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cases []struct {
+		Name     string      `json:"name"`
+		Distance float64     `json:"distance"`
+		Points   [][]float64 `json:"points"`
+		Want     []string    `json:"want"`
+	}
+	if err := json.Unmarshal(data, &cases); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range cases {
+		t.Run(tc.Name, func(t *testing.T) {
+			points := make([]GesturePoint, len(tc.Points))
+			for i, point := range tc.Points {
+				points[i] = GesturePoint{X: point[0], Y: point[1]}
+			}
+			if got := gestureDirectionsFromPoints(points, tc.Distance); !slices.Equal(got, tc.Want) {
+				t.Fatalf("手势方向 = %v，期望 %v", got, tc.Want)
+			}
+		})
+	}
+}
 
 func TestGestureDirectionsFromPoints(t *testing.T) {
 	points := []GesturePoint{

@@ -7,6 +7,14 @@ vars:
   ARCH: '{{.ARCH | default "amd64"}}'
 
 tasks:
+  test:
+    summary: 验证后端与前端手势识别
+    deps:
+      - frontend:install
+    cmds:
+      - go test ./...
+      - bun test ./frontend/tests
+
   bindings:
     summary: 生成 Wails TypeScript bindings
     sources:
