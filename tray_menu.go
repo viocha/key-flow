@@ -9,7 +9,7 @@ func buildTrayMenu(
 	config AppConfig,
 ) *application.Menu {
 	menu := app.NewMenu()
-	menu.Add("打开窗口").OnClick(func(*application.Context) {
+	menu.Add("打开").OnClick(func(*application.Context) {
 		openManager()
 	})
 	menu.AddSeparator()
