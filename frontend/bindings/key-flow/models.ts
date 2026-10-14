@@ -165,6 +165,7 @@ export interface TriggerLayer {
     "trigger": string;
     "holdMs": number;
     "tapBehavior": string;
+    "originalShortcut"?: string[] | null;
     "bindings": LayerBinding[] | null;
     "mouseShortcuts": MouseShortcutBinding[] | null;
     "windowOperations": WindowPointerOperations;

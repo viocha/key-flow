@@ -34,6 +34,55 @@ func testLayer(id, name, trigger string, enabled bool) TriggerLayer {
 	}
 }
 
+func TestCapsLockOriginalShortcut(t *testing.T) {
+	config := defaultConfig()
+	layer := testLayer("caps", "CapsLock", "CapsLock", true)
+	layer.TapBehavior = "shortcut"
+	layer.OriginalShortcut = []string{"CapsLock", "shift"}
+	config.Profiles[0].Layers = []TriggerLayer{layer}
+	if err := validateConfig(config); err != nil {
+		t.Fatal(err)
+	}
+	compiled, err := compileConfig(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := &InputEngine{compiled: compiled}
+	if got := engine.snapshot().layers["CapsLock"].originalShortcut; got != "Shift+CapsLock" {
+		t.Fatalf("原始操作快捷键 = %q", got)
+	}
+}
+
+func TestValidateOriginalShortcut(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		trigger  string
+		keys     []string
+		conflict bool
+	}{
+		{"空快捷键", "CapsLock", nil, false},
+		{"仅修饰键", "CapsLock", []string{"Shift"}, false},
+		{"单独 CapsLock", "CapsLock", []string{"CapsLock"}, false},
+		{"多个主键", "CapsLock", []string{"A", "B"}, false},
+		{"鼠标触发键", "MouseRight", []string{"Shift", "CapsLock"}, false},
+		{"通用快捷键冲突", "CapsLock", []string{"Shift", "CapsLock"}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			config := defaultConfig()
+			layer := testLayer("caps", "触发键", tc.trigger, true)
+			layer.TapBehavior = "shortcut"
+			layer.OriginalShortcut = tc.keys
+			config.Profiles[0].Layers = []TriggerLayer{layer}
+			if tc.conflict {
+				config.Profiles[0].Hotkeys = []HotkeyRule{testHotkey("conflict", true, "Shift", "CapsLock")}
+			}
+			if err := validateConfig(config); err == nil {
+				t.Fatal("应拒绝无效原始操作快捷键")
+			}
+		})
+	}
+}
+
 func TestDefaultConfigValidatesAndCompiles(t *testing.T) {
 	config := defaultConfig()
 	if err := validateConfig(config); err != nil {

@@ -279,6 +279,7 @@ const triggerItems = {
 const tapItems = {
   original: "执行原始操作",
   none: "不执行任何操作",
+  shortcut: "通过快捷键执行原始操作",
 }
 
 export function LayerDialog({
@@ -309,83 +310,112 @@ export function LayerDialog({
       onOpenChange={dialog.onOpenChange}
       onOpenChangeComplete={dialog.onOpenChangeComplete}
     >
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="h-[calc(100vh-3rem)] max-h-[35rem] grid-rows-[auto_minmax(0,1fr)_auto] sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{layer ? "编辑触发键" : "添加触发键"}</DialogTitle>
         </DialogHeader>
-        <FieldGroup>
-          <Field>
-            <FieldLabel>触发键</FieldLabel>
-            <Select
-              items={triggerItems}
-              value={draft.trigger}
-              onValueChange={(value) => {
-                const trigger = value ?? ""
-                setDraft({
+        <ScrollArea gutter="dialog" className="min-h-0">
+          <FieldGroup className="p-1">
+            <Field>
+              <FieldLabel>触发键</FieldLabel>
+              <Select
+                items={triggerItems}
+                value={draft.trigger}
+                onValueChange={(value) => {
+                  const trigger = value ?? ""
+                  setDraft({
+                    ...draft,
+                    trigger,
+                    name: triggerItems[trigger as keyof typeof triggerItems] ?? trigger,
+                    tapBehavior: trigger !== "CapsLock" && draft.tapBehavior === "shortcut"
+                      ? "none" : draft.tapBehavior,
+                  })
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="选择触发键" />
+                </SelectTrigger>
+                <SelectContent alignItemWithTrigger={false}>
+                  <SelectGroup>
+                    {Object.entries(triggerItems).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="layer-hold">进入 Layer 的长按时间</FieldLabel>
+              <NumberInput
+                id="layer-hold"
+                min={50}
+                max={1500}
+                value={draft.holdMs}
+                onValueChange={(holdMs) =>
+                  setDraft({
+                    ...draft,
+                    holdMs,
+                  })
+                }
+              />
+              <FieldDescription>50–1500 ms</FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel>短按行为</FieldLabel>
+              <Select
+                items={draft.trigger === "CapsLock" ? tapItems : { original: tapItems.original, none: tapItems.none }}
+                value={draft.tapBehavior}
+                onValueChange={(value) => setDraft({
                   ...draft,
-                  trigger,
-                  name: triggerItems[trigger as keyof typeof triggerItems] ?? trigger,
-                })
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="选择触发键" />
-              </SelectTrigger>
-              <SelectContent alignItemWithTrigger={false}>
-                <SelectGroup>
-                  {Object.entries(triggerItems).map(([value, label]) => (
-                    <SelectItem key={value} value={value}>
-                      {label}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="layer-hold">进入 Layer 的长按时间</FieldLabel>
-            <NumberInput
-              id="layer-hold"
-              min={50}
-              max={1500}
-              value={draft.holdMs}
-              onValueChange={(holdMs) =>
-                setDraft({
-                  ...draft,
-                  holdMs,
-                })
-              }
-            />
-            <FieldDescription>50–1500 ms</FieldDescription>
-          </Field>
-          <Field>
-            <FieldLabel>短按行为</FieldLabel>
-            <Select
-              items={tapItems}
-              value={draft.tapBehavior}
-              onValueChange={(value) =>
-                setDraft({ ...draft, tapBehavior: value ?? "original" })
-              }
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent alignItemWithTrigger={false}>
-                <SelectGroup>
-                  <SelectItem value="original">执行原始操作</SelectItem>
-                  <SelectItem value="none">不执行任何操作</SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </Field>
-        </FieldGroup>
+                  tapBehavior: value ?? "original",
+                  originalShortcut: draft.originalShortcut?.length
+                    ? draft.originalShortcut : ["Shift", "CapsLock"],
+                })}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent alignItemWithTrigger={false}>
+                  <SelectGroup>
+                    <SelectItem value="original">执行原始操作</SelectItem>
+                    <SelectItem value="none">不执行任何操作</SelectItem>
+                    {draft.trigger === "CapsLock" && (
+                      <SelectItem value="shortcut">通过快捷键执行原始操作</SelectItem>
+                    )}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+            {draft.tapBehavior === "shortcut" && (
+              <Field>
+                <FieldLabel>原始操作快捷键</FieldLabel>
+                <KeyRecorder
+                  value={draft.originalShortcut}
+                  allowWinModifier
+                  onChange={(originalShortcut) => setDraft({ ...draft, originalShortcut })}
+                />
+                <FieldDescription>
+                  单击 CapsLock 无操作，按此快捷键执行原始 CapsLock 功能
+                </FieldDescription>
+                {draft.originalShortcut?.length === 1 && draft.originalShortcut[0] === "CapsLock" && (
+                  <FieldError>请选择其他快捷键或添加修饰键</FieldError>
+                )}
+              </Field>
+            )}
+          </FieldGroup>
+        </ScrollArea>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={dialog.requestClose}>
             取消
           </Button>
           <Button
             type="button"
-            disabled={!draft.trigger || draft.holdMs < 50 || draft.holdMs > 1500}
+            disabled={!draft.trigger || draft.holdMs < 50 || draft.holdMs > 1500 ||
+              (draft.tapBehavior === "shortcut" &&
+                (!draft.originalShortcut?.some((key) => !["Win", "Ctrl", "Alt", "Shift"].includes(key)) ||
+                  (draft.originalShortcut.length === 1 && draft.originalShortcut[0] === "CapsLock")))}
             onClick={() => {
               onSave({
                 ...draft,

@@ -24,6 +24,7 @@ type compiledGestures struct {
 type compiledLayer struct {
 	hold             time.Duration
 	tapBehavior      string
+	originalShortcut string
 	bindings         map[string]Action
 	mouseShortcuts   map[string]compiledMouseShortcut
 	windowOperations WindowPointerOperations
@@ -235,6 +236,7 @@ func (e *InputEngine) snapshot() compiledConfig {
 		copy.layers[trigger] = compiledLayer{
 			hold:             layer.hold,
 			tapBehavior:      layer.tapBehavior,
+			originalShortcut: layer.originalShortcut,
 			bindings:         bindings,
 			mouseShortcuts:   mouseShortcuts,
 			windowOperations: layer.windowOperations,
@@ -418,9 +420,18 @@ func compileConfig(config AppConfig) (compiledConfig, error) {
 			}
 		}
 
+		originalShortcut := ""
+		if layer.TapBehavior == "shortcut" {
+			var err error
+			originalShortcut, err = canonicalChord(layer.OriginalShortcut)
+			if err != nil {
+				return compiledConfig{}, err
+			}
+		}
 		compiled.layers[layer.Trigger] = compiledLayer{
 			hold:             time.Duration(layer.HoldMS) * time.Millisecond,
 			tapBehavior:      layer.TapBehavior,
+			originalShortcut: originalShortcut,
 			bindings:         bindings,
 			mouseShortcuts:   mouseShortcuts,
 			windowOperations: layer.WindowOperations,

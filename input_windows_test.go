@@ -2,7 +2,106 @@
 
 package main
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
+
+func capsLockTestState() *windowsInputState {
+	return &windowsInputState{
+		engine: &InputEngine{
+			compiled: compiledConfig{
+				enabled: true,
+				layers: map[string]compiledLayer{
+					"CapsLock": {
+						hold:             time.Second,
+						tapBehavior:      "shortcut",
+						originalShortcut: "Shift+CapsLock",
+						bindings:         map[string]Action{"H": {Type: ActionKeyStroke, Keys: []string{"ArrowLeft"}}},
+					},
+				},
+			},
+			tasks: make(chan func(), 16),
+		},
+		down:                make(map[uint32]bool),
+		swallowKeyUp:        make(map[uint32]bool),
+		suppressedModifiers: make(map[uint32]bool),
+	}
+}
+
+func TestCapsLockOriginalShortcutInput(t *testing.T) {
+	for _, shift := range []uint32{vkLShift, vkRShift} {
+		state := capsLockTestState()
+		state.handleKeyboard(wmKeyDown, shift)
+		if !state.handleKeyboard(wmKeyDown, vkCapital) || state.trigger != nil {
+			t.Fatal("替代快捷键应被拦截且不进入 Layer")
+		}
+		state.handleKeyboard(wmKeyUp, shift)
+		if !state.handleKeyboard(wmKeyDown, vkCapital) || !state.handleKeyboard(wmKeyUp, vkCapital) {
+			t.Fatal("修饰键松开后的重复按下和主键松开也应被拦截")
+		}
+		if len(state.engine.tasks) != 1 || len(state.down) != 0 {
+			t.Fatalf("动作数 = %d，按键状态 = %v", len(state.engine.tasks), state.down)
+		}
+		state.handleKeyboard(wmKeyDown, vkCapital)
+		state.handleKeyboard(wmKeyUp, vkCapital)
+		if len(state.engine.tasks) != 1 {
+			t.Fatal("单击 CapsLock 不应执行原始操作")
+		}
+	}
+}
+
+func TestCapsLockShortcutModeLayer(t *testing.T) {
+	state := capsLockTestState()
+	state.handleKeyboard(wmKeyDown, vkCapital)
+	if state.trigger == nil {
+		t.Fatal("CapsLock 应开始 Layer 触发")
+	}
+	state.trigger.started = time.Now().Add(-2 * time.Second)
+	state.handleKeyboard(wmKeyUp, vkCapital)
+	if len(state.engine.tasks) != 0 {
+		t.Fatal("长按松开不应执行原始操作")
+	}
+	state.handleKeyboard(wmKeyDown, vkCapital)
+	if !state.handleKeyboard(wmKeyDown, 'H') || !state.handleKeyboard(wmKeyUp, 'H') {
+		t.Fatal("Layer 映射应被拦截")
+	}
+	state.handleKeyboard(wmKeyUp, vkCapital)
+	if len(state.engine.tasks) != 1 {
+		t.Fatal("应只执行 Layer 映射动作")
+	}
+}
+
+func TestCapsLockOriginalShortcutCaptureAndPause(t *testing.T) {
+	for _, capture := range []bool{true, false} {
+		state := capsLockTestState()
+		if capture {
+			state.engine.BeginInputCapture()
+		} else {
+			state.engine.compiled.enabled = false
+		}
+		state.handleKeyboard(wmKeyDown, vkLShift)
+		if state.handleKeyboard(wmKeyDown, vkCapital) || state.handleKeyboard(wmKeyUp, vkCapital) {
+			t.Fatal("录制或暂停时快捷键应交给系统")
+		}
+		if len(state.engine.tasks) != 0 || state.trigger != nil {
+			t.Fatal("录制或暂停时不应触发动作")
+		}
+	}
+}
+
+func TestLongHoldDoesNotDependOnTimerScheduling(t *testing.T) {
+	state := capsLockTestState()
+	state.trigger = &activeTrigger{
+		name:    "CapsLock",
+		started: time.Now().Add(-time.Second),
+		layer:   compiledLayer{hold: time.Millisecond * 200, tapBehavior: "original"},
+	}
+	state.finishTriggerLocked()
+	if len(state.engine.tasks) != 0 {
+		t.Fatal("长按判断应使用实际时长，避免计时器调度延迟导致误触")
+	}
+}
 
 func TestHorizontalWheelDirection(t *testing.T) {
 	if got := inputForWheel(wmMouseHWheel, 1); got != "wheelRight" {

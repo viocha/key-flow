@@ -216,24 +216,25 @@ type pointerMoveRequest struct {
 type windowsInputState struct {
 	engine *InputEngine
 
-	mu                  sync.Mutex
-	threadID            uint32
-	keyboardHook        windows.Handle
-	mouseHook           windows.Handle
-	closed              bool
-	down                map[uint32]bool
-	swallowKeyUp        map[uint32]bool
-	suppressedModifiers map[uint32]bool
-	trigger             *activeTrigger
-	gesture             *activeGesture
-	pointerCapture      *pointerCapture
-	edgeSwitcherActive  bool
-	wheel               wheelGate
-	cursorWindow        windows.Handle
-	pointerMoves        chan pointerMoveRequest
-	pointerTasks        chan func()
-	pointerStop         chan struct{}
-	pointerWG           sync.WaitGroup
+	mu                   sync.Mutex
+	threadID             uint32
+	keyboardHook         windows.Handle
+	mouseHook            windows.Handle
+	closed               bool
+	down                 map[uint32]bool
+	swallowKeyUp         map[uint32]bool
+	originalShortcutDown map[uint32]bool
+	suppressedModifiers  map[uint32]bool
+	trigger              *activeTrigger
+	gesture              *activeGesture
+	pointerCapture       *pointerCapture
+	edgeSwitcherActive   bool
+	wheel                wheelGate
+	cursorWindow         windows.Handle
+	pointerMoves         chan pointerMoveRequest
+	pointerTasks         chan func()
+	pointerStop          chan struct{}
+	pointerWG            sync.WaitGroup
 }
 
 func startPlatformInputEngine(engine *InputEngine) (func(), error) {
@@ -389,6 +390,14 @@ func (s *windowsInputState) handleKeyboard(message uint32, vk uint32) bool {
 	if isDown {
 		s.down[vk] = true
 	}
+	// 替代快捷键每次按下只执行一次，重复按下和松开都不交给目标程序。
+	if s.originalShortcutDown[vk] {
+		if isUp {
+			delete(s.originalShortcutDown, vk)
+			delete(s.down, vk)
+		}
+		return true
+	}
 
 	if s.edgeSwitcherActive && isDown && (vk == vkEscape || vk == vkReturn) {
 		s.edgeSwitcherActive = false
@@ -437,6 +446,21 @@ func (s *windowsInputState) handleKeyboard(message uint32, vk uint32) bool {
 
 	if s.engine.InputCaptureActive() {
 		return false
+	}
+	if s.trigger == nil {
+		if layer, ok := config.layers["CapsLock"]; ok && layer.originalShortcut != "" &&
+			layer.originalShortcut == s.currentChordLocked(keyNameFromVK(vk)) {
+			if s.originalShortcutDown == nil {
+				s.originalShortcutDown = make(map[uint32]bool)
+			}
+			s.originalShortcutDown[vk] = true
+			s.engine.enqueueTask(func() {
+				if err := sendOriginalTrigger("CapsLock"); err != nil {
+					s.engine.setError(err)
+				}
+			})
+			return true
+		}
 	}
 
 	if isDown && vk == vkCapital {
@@ -575,7 +599,7 @@ func (s *windowsInputState) finishTriggerLocked() {
 	s.trigger = nil
 	s.wheel.reset()
 
-	if !trigger.entered && !trigger.used && trigger.layer.tapBehavior == "original" {
+	if !trigger.entered && !trigger.used && time.Since(trigger.started) < trigger.layer.hold && trigger.layer.tapBehavior == "original" {
 		name := trigger.name
 		s.engine.enqueueTask(func() {
 			if err := sendOriginalTrigger(name); err != nil {

@@ -255,8 +255,25 @@ func validateConfig(config AppConfig) error {
 			if layer.HoldMS < 50 || layer.HoldMS > 1500 {
 				return fmt.Errorf("触发键 %q 的延迟须为 50–1500 毫秒", layer.Name)
 			}
-			if layer.TapBehavior != "original" && layer.TapBehavior != "none" {
+			if layer.TapBehavior != "original" && layer.TapBehavior != "none" && layer.TapBehavior != "shortcut" {
 				return fmt.Errorf("触发键 %q 的短按行为无效", layer.Name)
+			}
+			if layer.TapBehavior == "shortcut" {
+				if layer.Trigger != "CapsLock" {
+					return errors.New("仅 CapsLock 支持通过快捷键执行原始操作")
+				}
+				chord, err := canonicalChord(layer.OriginalShortcut)
+				if err != nil {
+					return fmt.Errorf("原始操作快捷键无效: %w", err)
+				}
+				if chord == "CapsLock" {
+					return errors.New("原始操作快捷键不能是单独的 CapsLock")
+				}
+				if layer.Enabled {
+					if _, exists := hotkeyChords["key:"+chord]; exists {
+						return fmt.Errorf("原始操作快捷键与通用快捷键冲突: %s", chord)
+					}
+				}
 			}
 			if layer.Enabled {
 				if previous, exists := activeTriggers[layer.Trigger]; exists {

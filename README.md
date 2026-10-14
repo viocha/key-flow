@@ -9,6 +9,7 @@ Key Flow 是一个 Windows 全局快捷键与触发键工具，使用 Go + Wails
 - CapsLock、鼠标右键、Mouse4、Mouse5 触发键 Layer
 - Trigger + Ctrl / Shift / Alt / Win 组合映射
 - Trigger 短按保留原操作，长按进入 Layer
+- CapsLock 原始操作可改用自定义快捷键，单击无操作，长按进入 Layer
 - 按场景分组的预置动作
 - 输入文本、打开文件/目录/URL
 - 执行 exe、PowerShell、Bun 等命令或脚本
@@ -16,6 +17,12 @@ Key Flow 是一个 Windows 全局快捷键与触发键工具，使用 Go + Wails
 - Profile 配置模型
 - JSON 自动保存
 - 系统托盘与全局暂停开关
+
+## CapsLock 原始操作快捷键
+
+编辑 CapsLock 触发键，将“短按行为”设为“通过快捷键执行原始操作”，录制“原始操作快捷键”并保存，默认使用 Shift + CapsLock。此模式下，单击 CapsLock 不执行操作，长按 CapsLock 进入 Layer；按替代快捷键执行一次原始 CapsLock 功能，持续按住不会重复执行。
+
+组合键先按住修饰键，再按主键。例如 Shift + CapsLock 须先按住 Shift，再按 CapsLock。原始操作快捷键不能使用单独的 CapsLock，也不能与已启用的通用快捷键重复。
 
 ## 窗口切换
 

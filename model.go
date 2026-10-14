@@ -107,6 +107,7 @@ type TriggerLayer struct {
 	Trigger          string                  `json:"trigger"`
 	HoldMS           int                     `json:"holdMs"`
 	TapBehavior      string                  `json:"tapBehavior"`
+	OriginalShortcut []string                `json:"originalShortcut,omitempty"`
 	Bindings         []LayerBinding          `json:"bindings"`
 	MouseShortcuts   []MouseShortcutBinding  `json:"mouseShortcuts"`
 	WindowOperations WindowPointerOperations `json:"windowOperations"`
