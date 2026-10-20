@@ -2,8 +2,10 @@ package main
 
 import (
 	"embed"
+	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -22,6 +24,13 @@ func main() {
 	store, err := NewConfigStore()
 	if err != nil {
 		log.Fatal(err)
+	}
+	logFile, logErr := os.OpenFile(filepath.Join(filepath.Dir(store.Path()), "key-flow.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	if logErr == nil {
+		defer logFile.Close()
+		log.SetOutput(io.MultiWriter(os.Stderr, logFile))
+	} else {
+		log.Printf("打开运行日志失败: %v", logErr)
 	}
 
 	engine, err := NewInputEngine(store.Snapshot())

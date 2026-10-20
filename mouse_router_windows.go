@@ -13,6 +13,9 @@ func (s *windowsInputState) handleMouse(message uint32, data *msLLHookStruct) bo
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.closed {
+		return false
+	}
 
 	if capture := s.pointerCapture; capture != nil {
 		if message == wmMouseMove {

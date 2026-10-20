@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -77,6 +78,8 @@ type InputEngine struct {
 
 	overlayMu      sync.RWMutex
 	overlayHandler func(GestureOverlayEvent)
+	lifecycleMu    sync.Mutex
+	startPlatform  func(*InputEngine) (func(), error)
 	stopPlatform   func()
 }
 
@@ -115,6 +118,7 @@ func NewInputEngine(config AppConfig) (*InputEngine, error) {
 		tasks:         make(chan func(), 128),
 		overlayEvents: make(chan GestureOverlayEvent, 1),
 		done:          make(chan struct{}),
+		startPlatform: startPlatformInputEngine,
 	}
 	engine.wg.Add(2)
 	go engine.runTasks()
@@ -123,10 +127,46 @@ func NewInputEngine(config AppConfig) (*InputEngine, error) {
 }
 
 func (e *InputEngine) Start() error {
-	stop, err := startPlatformInputEngine(e)
+	e.lifecycleMu.Lock()
+	defer e.lifecycleMu.Unlock()
+	if e.stopPlatform != nil {
+		return nil
+	}
+	return e.startLocked()
+}
+
+// 只重建平台监听，保留动作队列与事件工作协程。
+func (e *InputEngine) Restart() error {
+	e.lifecycleMu.Lock()
+	defer e.lifecycleMu.Unlock()
+	return e.restartLocked()
+}
+
+func (e *InputEngine) restartLocked() error {
+	if e.stopPlatform != nil {
+		e.stopPlatform()
+		e.stopPlatform = nil
+	}
+	e.ResetInputCapture()
+	return e.startLocked()
+}
+
+func (e *InputEngine) startLocked() error {
+	select {
+	case <-e.done:
+		return fmt.Errorf("输入引擎已关闭")
+	default:
+	}
+	stop, err := e.startPlatform(e)
+	if err != nil {
+		log.Printf("启动全局输入监听失败: %v", err)
+	} else {
+		log.Print("全局输入监听已启动")
+	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if err != nil {
+		e.status.Running = false
 		e.status.Error = err.Error()
 		return err
 	}
@@ -137,6 +177,8 @@ func (e *InputEngine) Start() error {
 }
 
 func (e *InputEngine) Stop() {
+	e.lifecycleMu.Lock()
+	defer e.lifecycleMu.Unlock()
 	e.mu.Lock()
 	stop := e.stopPlatform
 	e.stopPlatform = nil
@@ -160,10 +202,17 @@ func (e *InputEngine) UpdateConfig(config AppConfig) error {
 	if err != nil {
 		return err
 	}
+	e.lifecycleMu.Lock()
+	defer e.lifecycleMu.Unlock()
 	e.mu.Lock()
+	wasEnabled := e.compiled.enabled
+	wasRunning := e.status.Running
 	e.compiled = compiled
 	e.status.Enabled = config.Enabled
 	e.mu.Unlock()
+	if config.Enabled && (!wasEnabled || !wasRunning || e.stopPlatform == nil) {
+		return e.restartLocked()
+	}
 	return nil
 }
 

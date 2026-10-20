@@ -4,8 +4,12 @@ package main
 
 import (
 	"fmt"
-	"golang.org/x/sys/windows"
+	"runtime"
+	"sync"
 	"syscall"
+	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
 const windowHistoryLimit = 128
@@ -85,8 +89,47 @@ var (
 	})
 )
 
-// 在拥有消息循环的线程上安装和卸载事件 Hook。
+// 窗口枚举及前台窗口事件使用独立线程，避免阻塞键鼠 Hook 的消息循环。
 func startWindowHistory() (func(), error) {
+	ready := make(chan error, 1)
+	finished := make(chan struct{})
+	var threadID uintptr
+	go func() {
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+		defer close(finished)
+		threadID, _, _ = procGetCurrentThreadID.Call()
+		var message msg
+		procPeekMessageW.Call(uintptr(unsafe.Pointer(&message)), 0, 0, 0, pmNoRemove)
+		stop, err := installWindowHistory()
+		ready <- err
+		if err != nil {
+			return
+		}
+		defer stop()
+		for {
+			result, _, _ := procGetMessageW.Call(uintptr(unsafe.Pointer(&message)), 0, 0, 0)
+			if int32(result) <= 0 {
+				return
+			}
+			procTranslateMessage.Call(uintptr(unsafe.Pointer(&message)))
+			procDispatchMessageW.Call(uintptr(unsafe.Pointer(&message)))
+		}
+	}()
+	if err := <-ready; err != nil {
+		<-finished
+		return nil, err
+	}
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			procPostThreadMessageW.Call(threadID, 0x0012, 0, 0)
+			<-finished
+		})
+	}, nil
+}
+
+func installWindowHistory() (func(), error) {
 	const eventSystemForeground = 0x0003
 	hook, _, err := procHistorySetWinEventHook.Call(eventSystemForeground, eventSystemForeground, 0, historyWinEventCallback, 0, 0, 0)
 	if hook == 0 {

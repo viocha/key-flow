@@ -81,6 +81,8 @@ key-flow/config.json
 
 ## Windows 输入层
 
+托盘“重启监听”会重新安装键鼠 Hook，保留当前配置和动作队列。“启用 Key Flow”从关闭切换到启用时也会重建监听。启动结果和消息循环异常写入配置目录中的 `key-flow.log`。
+
 输入监听基于：
 
 - `WH_KEYBOARD_LL`

@@ -1,6 +1,10 @@
 package main
 
-import "github.com/wailsapp/wails/v3/pkg/application"
+import (
+	"log"
+
+	"github.com/wailsapp/wails/v3/pkg/application"
+)
 
 func buildTrayMenu(
 	app *application.App,
@@ -74,6 +78,11 @@ func buildTrayMenu(
 	addTrayConfigToggle(menu, "启用 Key Flow", config.Enabled, service, func(next *AppConfig, enabled bool) bool {
 		next.Enabled = enabled
 		return true
+	})
+	menu.Add("重启监听").OnClick(func(*application.Context) {
+		if err := service.engine.Restart(); err != nil {
+			log.Printf("重启全局输入监听失败: %v", err)
+		}
 	})
 
 	menu.AddSeparator()

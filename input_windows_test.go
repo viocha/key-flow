@@ -7,6 +7,46 @@ import (
 	"time"
 )
 
+func TestPlatformInputEngineRestart(t *testing.T) {
+	config := defaultConfig()
+	config.Enabled = false
+	engine, err := NewInputEngine(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer engine.Stop()
+	if err := engine.Start(); err != nil {
+		t.Fatal(err)
+	}
+	var previous *windowsInputState
+	for range 3 {
+		var current *windowsInputState
+		count := 0
+		inputHookStates.Range(func(_, value any) bool {
+			state := value.(*windowsInputState)
+			if state.engine == engine {
+				current = state
+				count++
+			}
+			return true
+		})
+		if count != 1 || current == previous {
+			t.Fatalf("应只有一份有效监听状态: 数量 %d", count)
+		}
+		previous = current
+		if err := engine.Restart(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	engine.Stop()
+	inputHookStates.Range(func(_, value any) bool {
+		if value.(*windowsInputState).engine == engine {
+			t.Error("关闭后监听线程状态未清理")
+		}
+		return true
+	})
+}
+
 func capsLockTestState() *windowsInputState {
 	return &windowsInputState{
 		engine: &InputEngine{

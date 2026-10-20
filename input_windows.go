@@ -4,6 +4,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os/exec"
 	"runtime"
 	"strconv"
@@ -237,6 +238,35 @@ type windowsInputState struct {
 	pointerWG            sync.WaitGroup
 }
 
+// Windows 回调槽位不会释放；重启监听时按所属线程查找状态，复用同一组回调。
+var inputHookStates sync.Map
+var keyboardHookCallback = syscall.NewCallback(func(code int, wParam uintptr, lParam uintptr) uintptr {
+	if code < 0 {
+		return callNextHook(code, wParam, lParam)
+	}
+	data := (*kbdLLHookStruct)(unsafe.Pointer(lParam))
+	if data.DwExtraInfo != keyRunnerInputMarker {
+		threadID, _, _ := procGetCurrentThreadID.Call()
+		if value, ok := inputHookStates.Load(threadID); ok && value.(*windowsInputState).handleKeyboard(uint32(wParam), data.VkCode) {
+			return 1
+		}
+	}
+	return callNextHook(code, wParam, lParam)
+})
+var mouseHookCallback = syscall.NewCallback(func(code int, wParam uintptr, lParam uintptr) uintptr {
+	if code < 0 {
+		return callNextHook(code, wParam, lParam)
+	}
+	data := (*msLLHookStruct)(unsafe.Pointer(lParam))
+	if data.DwExtraInfo != keyRunnerInputMarker {
+		threadID, _, _ := procGetCurrentThreadID.Call()
+		if value, ok := inputHookStates.Load(threadID); ok && value.(*windowsInputState).handleMouse(uint32(wParam), data) {
+			return 1
+		}
+	}
+	return callNextHook(code, wParam, lParam)
+})
+
 func startPlatformInputEngine(engine *InputEngine) (func(), error) {
 	state := &windowsInputState{
 		engine:              engine,
@@ -248,12 +278,24 @@ func startPlatformInputEngine(engine *InputEngine) (func(), error) {
 		pointerStop:         make(chan struct{}),
 	}
 	ready := make(chan error, 1)
+	finished := make(chan struct{})
 
 	go func() {
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
+		defer close(finished)
+
+		// 所有启动枚举均在安装键鼠 Hook 之前完成，安装后立即进入消息循环。
+		stopHistory, historyErr := startWindowHistory()
+		if historyErr != nil {
+			ready <- historyErr
+			return
+		}
+		defer stopHistory()
 
 		threadID, _, _ := procGetCurrentThreadID.Call()
+		inputHookStates.Store(threadID, state)
+		defer inputHookStates.Delete(threadID)
 		cursorWindow := createCursorFeedbackWindow()
 
 		state.mu.Lock()
@@ -261,21 +303,7 @@ func startPlatformInputEngine(engine *InputEngine) (func(), error) {
 		state.cursorWindow = cursorWindow
 		state.mu.Unlock()
 
-		keyboardCallback := syscall.NewCallback(func(code int, wParam uintptr, lParam uintptr) uintptr {
-			if code < 0 {
-				return callNextHook(code, wParam, lParam)
-			}
-			data := (*kbdLLHookStruct)(unsafe.Pointer(lParam))
-			if data.DwExtraInfo == keyRunnerInputMarker {
-				return callNextHook(code, wParam, lParam)
-			}
-			if state.handleKeyboard(uint32(wParam), data.VkCode) {
-				return 1
-			}
-			return callNextHook(code, wParam, lParam)
-		})
-
-		keyboardHook, _, keyboardErr := procSetWindowsHookExW.Call(whKeyboardLL, keyboardCallback, 0, 0)
+		keyboardHook, _, keyboardErr := procSetWindowsHookExW.Call(whKeyboardLL, keyboardHookCallback, 0, 0)
 		if keyboardHook == 0 {
 			if cursorWindow != 0 {
 				procDestroyWindow.Call(uintptr(cursorWindow))
@@ -284,22 +312,7 @@ func startPlatformInputEngine(engine *InputEngine) (func(), error) {
 			return
 		}
 
-		mouseCallback := syscall.NewCallback(func(code int, wParam uintptr, lParam uintptr) uintptr {
-			if code < 0 {
-				return callNextHook(code, wParam, lParam)
-			}
-			data := (*msLLHookStruct)(unsafe.Pointer(lParam))
-			if data.DwExtraInfo == keyRunnerInputMarker {
-				return callNextHook(code, wParam, lParam)
-			}
-			handled := state.handleMouse(uint32(wParam), data)
-			if handled {
-				return 1
-			}
-			return callNextHook(code, wParam, lParam)
-		})
-
-		mouseHook, _, mouseErr := procSetWindowsHookExW.Call(whMouseLL, mouseCallback, 0, 0)
+		mouseHook, _, mouseErr := procSetWindowsHookExW.Call(whMouseLL, mouseHookCallback, 0, 0)
 		if mouseHook == 0 {
 			procUnhookWindowsHookEx.Call(keyboardHook)
 			if cursorWindow != 0 {
@@ -309,17 +322,6 @@ func startPlatformInputEngine(engine *InputEngine) (func(), error) {
 			return
 		}
 
-		stopHistory, historyErr := startWindowHistory()
-		if historyErr != nil {
-			procUnhookWindowsHookEx.Call(mouseHook)
-			procUnhookWindowsHookEx.Call(keyboardHook)
-			if cursorWindow != 0 {
-				procDestroyWindow.Call(uintptr(cursorWindow))
-			}
-			ready <- historyErr
-			return
-		}
-		defer stopHistory()
 		state.mu.Lock()
 		state.keyboardHook = windows.Handle(keyboardHook)
 		state.mouseHook = windows.Handle(mouseHook)
@@ -330,8 +332,19 @@ func startPlatformInputEngine(engine *InputEngine) (func(), error) {
 
 		var message msg
 		for {
-			result, _, _ := procGetMessageW.Call(uintptr(unsafe.Pointer(&message)), 0, 0, 0)
+			result, _, messageErr := procGetMessageW.Call(uintptr(unsafe.Pointer(&message)), 0, 0, 0)
 			if int32(result) <= 0 {
+				state.mu.Lock()
+				unexpected := !state.closed
+				state.mu.Unlock()
+				if unexpected {
+					err := fmt.Errorf("全局输入监听消息循环退出: %v", messageErr)
+					engine.mu.Lock()
+					engine.status.Running = false
+					engine.status.Error = err.Error()
+					engine.mu.Unlock()
+					log.Print(err)
+				}
 				break
 			}
 			procTranslateMessage.Call(uintptr(unsafe.Pointer(&message)))
@@ -346,6 +359,7 @@ func startPlatformInputEngine(engine *InputEngine) (func(), error) {
 	}()
 
 	if err := <-ready; err != nil {
+		<-finished
 		return nil, fmt.Errorf("安装全局输入 Hook 失败: %w", err)
 	}
 
@@ -360,15 +374,22 @@ func startPlatformInputEngine(engine *InputEngine) (func(), error) {
 		if state.trigger != nil && state.trigger.timer != nil {
 			state.trigger.timer.Stop()
 		}
+		state.cancelGestureLocked(state.gesture)
 		hideCursorFeedback(state.cursorWindow)
 		threadID := state.threadID
 		state.mu.Unlock()
 		state.pointerWG.Wait()
 
+		select {
+		case <-finished:
+			return
+		default:
+		}
 		if threadID != 0 {
 			const wmQuit = 0x0012
 			procPostThreadMessageW.Call(uintptr(threadID), wmQuit, 0, 0)
 		}
+		<-finished
 	}, nil
 }
 
@@ -386,6 +407,9 @@ func (s *windowsInputState) handleKeyboard(message uint32, vk uint32) bool {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.closed {
+		return false
+	}
 
 	if isDown {
 		s.down[vk] = true
