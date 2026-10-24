@@ -88,7 +88,7 @@ func showBrightnessFeedback(percent int, pt point) {
 	if !ok {
 		return
 	}
-	scale := gestureOverlayDPIScaleAtPoint(pt)
+	scale := dpiScaleAtPoint(pt)
 	if scale <= 0 {
 		scale = 1
 	}

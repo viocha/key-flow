@@ -104,29 +104,22 @@ func setCursorFeedback(hwnd windows.Handle, cursorID uintptr, pt point) {
 	}
 	procSetClassLongPtrW.Call(uintptr(hwnd), ^uintptr(11), cursor)
 	procShowWindowCursor.Call(uintptr(hwnd), cursorSWShowNA)
-	procSetWindowPosCursor.Call(
-		uintptr(hwnd),
-		^uintptr(0),
-		uintptr(pt.X-128),
-		uintptr(pt.Y-128),
-		256,
-		256,
-		cursorSWPNoActivate|cursorSWPNoRedraw|cursorSWPDeferErase|cursorSWPNoSendChanging,
-	)
+	moveCursorFeedback(hwnd, pt)
 }
 
 func moveCursorFeedback(hwnd windows.Handle, pt point) {
 	if hwnd == 0 {
 		return
 	}
+	size := physicalPixels(256, dpiScaleAtPoint(pt))
 	procSetWindowPosCursor.Call(
 		uintptr(hwnd),
 		^uintptr(0),
-		uintptr(pt.X-128),
-		uintptr(pt.Y-128),
-		0,
-		0,
-		cursorSWPNoSize|cursorSWPNoActivate|cursorSWPNoRedraw|cursorSWPDeferErase|cursorSWPNoSendChanging,
+		uintptr(pt.X-size/2),
+		uintptr(pt.Y-size/2),
+		uintptr(size),
+		uintptr(size),
+		cursorSWPNoActivate|cursorSWPNoRedraw|cursorSWPDeferErase|cursorSWPNoSendChanging,
 	)
 }
 

@@ -103,7 +103,7 @@ func TestCornerRulesTakePriorityOverStraightEdges(t *testing.T) {
 		{point{100, 1079}, "wheelHorizontal", "bottom"},
 		{point{50, 1029}, "wheelVertical", ""},
 	} {
-		got, ok := edgeWheelInBounds(sample.pt, bounds, sample.input, rules)
+		got, ok := edgeWheelInBounds(sample.pt, bounds, sample.input, rules, 1)
 		if got.zone != sample.want || ok != (sample.want != "") {
 			t.Errorf("点 %+v，输入 %s: 区域 = %q，期望 %q", sample.pt, sample.input, got.zone, sample.want)
 		}

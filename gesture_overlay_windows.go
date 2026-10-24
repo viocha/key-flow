@@ -51,7 +51,6 @@ const (
 var (
 	gestureOverlayGDI32                          = windows.NewLazySystemDLL("gdi32.dll")
 	gestureOverlayGDIPlus                        = windows.NewLazySystemDLL("gdiplus.dll")
-	gestureOverlayShcore                         = windows.NewLazySystemDLL("shcore.dll")
 	procGestureOverlayBeginPaint                 = user32.NewProc("BeginPaint")
 	procGestureOverlayEndPaint                   = user32.NewProc("EndPaint")
 	procGestureOverlayFillRect                   = user32.NewProc("FillRect")
@@ -75,7 +74,6 @@ var (
 	procGestureOverlayRoundRect                  = gestureOverlayGDI32.NewProc("RoundRect")
 	procGestureOverlayCreateFontW                = gestureOverlayGDI32.NewProc("CreateFontW")
 	procGestureOverlayGDIFlush                   = gestureOverlayGDI32.NewProc("GdiFlush")
-	procGestureOverlayGetDpiForMonitor           = gestureOverlayShcore.NewProc("GetDpiForMonitor")
 	procGestureOverlayGDIPlusStartup             = gestureOverlayGDIPlus.NewProc("GdiplusStartup")
 	procGestureOverlayCreateGraphicsFromHDC      = gestureOverlayGDIPlus.NewProc("GdipCreateFromHDC")
 	procGestureOverlayDeleteGraphics             = gestureOverlayGDIPlus.NewProc("GdipDeleteGraphics")
@@ -281,6 +279,21 @@ func (o *nativeGestureOverlay) Update(event GestureOverlayEvent) {
 		return
 	}
 
+	if len(event.Points) > 0 {
+		last := event.Points[len(event.Points)-1]
+		scale := dpiScaleAtPoint(point{X: int32(last.X) + bounds.Left, Y: int32(last.Y) + bounds.Top})
+		if o.visible && !event.Reset && scale != o.dpiScale {
+			// 跨缩放不同的显示器时重绘轨迹及文字，坐标保持贴合光标。
+			points := append([]GesturePoint(nil), o.points...)
+			event.Points = append(points, event.Points...)
+			event.Reset = true
+		}
+		o.dpiScale = scale
+	}
+	if o.dpiScale <= 0 {
+		o.dpiScale = 1
+	}
+
 	if event.Reset || !o.visible {
 		// 置顶窗口可能后来进入 topmost Z-order 并盖住常驻 Overlay。
 		// 手势开始时只提升一次，不在每个鼠标移动事件上调整 Z-order。
@@ -293,17 +306,6 @@ func (o *nativeGestureOverlay) Update(event GestureOverlayEvent) {
 			0,
 			swpNoMove|swpNoSize|swpNoActivate,
 		)
-
-		if len(event.Points) > 0 {
-			globalStart := point{
-				X: int32(event.Points[0].X) + bounds.Left,
-				Y: int32(event.Points[0].Y) + bounds.Top,
-			}
-			o.dpiScale = gestureOverlayDPIScaleAtPoint(globalStart)
-		}
-		if o.dpiScale <= 0 {
-			o.dpiScale = 1
-		}
 
 		dirty := unionOverlayRect(o.pathRect, o.labelRect)
 		if !overlayRectEmpty(dirty) {
@@ -976,29 +978,6 @@ func overlayRectsIntersect(a, b rect) bool {
 		a.Bottom > b.Top
 }
 
-func gestureOverlayDPIScaleAtPoint(pt point) float64 {
-	monitor := monitorAtPoint(pt)
-	if monitor == 0 {
-		return 1
-	}
-
-	var dpiX uint32
-	var dpiY uint32
-	result, _, _ := procGestureOverlayGetDpiForMonitor.Call(
-		uintptr(monitor),
-		0,
-		uintptr(unsafe.Pointer(&dpiX)),
-		uintptr(unsafe.Pointer(&dpiY)),
-	)
-	if int32(result) < 0 || dpiX == 0 {
-		return 1
-	}
-	return float64(dpiX) / 96.0
-}
-
 func scaleGestureOverlay(value float64, dpiScale float64) int32 {
-	if dpiScale <= 0 {
-		dpiScale = 1
-	}
-	return int32(math.Round(value * dpiScale))
+	return physicalPixels(value, dpiScale)
 }

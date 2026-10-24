@@ -8,7 +8,6 @@ import { directionsFromPoints, type GestureSample } from "@/lib/gesture-recognit
 
 type Drawing = {
   pointerId: number
-  pixelRatio: number
   points: GestureSample[]
 }
 
@@ -37,7 +36,7 @@ export function GestureRecorder({
     }))
   }, [drawing, preview])
   const visibleDirections = useMemo(() => drawing
-    ? directionsFromPoints(drawing.points, segmentDistance, drawing.pixelRatio)
+    ? directionsFromPoints(drawing.points, segmentDistance)
     : (directions ?? []), [drawing, directions, segmentDistance])
   const endpoint = visiblePreview[visiblePreview.length - 1]
   const endpointDirection = visibleDirections[visibleDirections.length - 1]
@@ -47,7 +46,7 @@ export function GestureRecorder({
     setDrawing(next)
   }
 
-  const finish = (points: GestureSample[], pixelRatio: number) => {
+  const finish = (points: GestureSample[]) => {
     const element = boxRef.current
     if (!element || points.length < 2) {
       updateDrawing(null)
@@ -58,7 +57,7 @@ export function GestureRecorder({
       x: clamp01((point.x - rect.left) / Math.max(1, rect.width)),
       y: clamp01((point.y - rect.top) / Math.max(1, rect.height)),
     }))
-    onChange(normalized, directionsFromPoints(points, segmentDistance, pixelRatio))
+    onChange(normalized, directionsFromPoints(points, segmentDistance))
     updateDrawing(null)
   }
 
@@ -76,7 +75,6 @@ export function GestureRecorder({
           event.currentTarget.setPointerCapture(event.pointerId)
           updateDrawing({
             pointerId: event.pointerId,
-            pixelRatio: window.devicePixelRatio,
             points: [{ x: event.clientX, y: event.clientY }],
           })
         }}
@@ -84,7 +82,7 @@ export function GestureRecorder({
           const current = drawingRef.current
           if (!current || current.pointerId !== event.pointerId) return
           const last = current.points[current.points.length - 1]
-          if (Math.hypot(event.clientX - last.x, event.clientY - last.y) * current.pixelRatio < 2) return
+          if (Math.hypot(event.clientX - last.x, event.clientY - last.y) < 2) return
           updateDrawing({
             ...current,
             points: [...current.points, { x: event.clientX, y: event.clientY }],
@@ -93,7 +91,7 @@ export function GestureRecorder({
         onPointerUp={(event) => {
           const current = drawingRef.current
           if (current?.pointerId !== event.pointerId) return
-          finish([...current.points, { x: event.clientX, y: event.clientY }], current.pixelRatio)
+          finish([...current.points, { x: event.clientX, y: event.clientY }])
         }}
         onPointerCancel={() => {
           updateDrawing(null)

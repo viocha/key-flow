@@ -4,11 +4,10 @@ export type GestureSample = { x: number; y: number }
 export function directionsFromPoints(
   points: readonly GestureSample[],
   segmentDistance: number,
-  pixelRatio: number,
 ) {
   if (points.length < 2) return []
-  // 采样坐标是 CSS 像素，配置距离是屏幕像素，空间容差也按同一比例换算。
-  segmentDistance = Math.max(1, segmentDistance) / pixelRatio
+  // 采样坐标与配置距离均使用 CSS px。
+  segmentDistance = Math.max(1, segmentDistance)
   const vertices = simplifyPoints(points, segmentDistance / 2)
   const directions: string[] = []
   let anchor = vertices[0]

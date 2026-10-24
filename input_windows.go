@@ -192,15 +192,16 @@ type activeTrigger struct {
 }
 
 type activeGesture struct {
-	trigger      string
-	config       compiledGestures
-	points       []GesturePoint
-	active       bool
-	canceled     bool
-	label        string
-	targetWindow windows.Handle
-	timeout      time.Duration
-	timeoutTimer *time.Timer
+	trigger       string
+	config        compiledGestures
+	points        []GesturePoint
+	logicalPoints []GesturePoint
+	active        bool
+	canceled      bool
+	label         string
+	targetWindow  windows.Handle
+	timeout       time.Duration
+	timeoutTimer  *time.Timer
 }
 
 type pointerCapture struct {

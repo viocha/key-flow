@@ -224,8 +224,9 @@ func (session *windowManipulation) update(pt point) error {
 		} else {
 			value.Bottom += dy
 		}
-		const minWidth = 160
-		const minHeight = 100
+		scale := dpiScaleAtPoint(pt)
+		minWidth := physicalPixels(160, scale)
+		minHeight := physicalPixels(100, scale)
 		if value.Right-value.Left < minWidth {
 			if session.resizeLeft {
 				value.Left = value.Right - minWidth
@@ -278,12 +279,9 @@ func scaleWindow(hwnd windows.Handle, deltaSign int, stepPercent int) error {
 	factor := 1 + float64(deltaSign*stepPercent)/100
 	width := int32(math.Round(float64(value.Right-value.Left) * factor))
 	height := int32(math.Round(float64(value.Bottom-value.Top) * factor))
-	if width < 160 {
-		width = 160
-	}
-	if height < 100 {
-		height = 100
-	}
+	scale := windowScale(hwnd)
+	width = max(width, physicalPixels(160, scale))
+	height = max(height, physicalPixels(100, scale))
 	centerX := value.Left + (value.Right-value.Left)/2
 	centerY := value.Top + (value.Bottom-value.Top)/2
 	return setWindowRect(hwnd, rect{
@@ -721,14 +719,17 @@ func edgeWheelAtPoint(pt point, input string, rules map[string]compiledEdgeWheel
 	if !ok {
 		return compiledEdgeWheel{}, false
 	}
-	return edgeWheelInBounds(pt, bounds, input, rules)
+	return edgeWheelInBounds(pt, bounds, input, rules, dpiScaleAtPoint(pt))
 }
 
-func edgeWheelInBounds(pt point, bounds rect, input string, rules map[string]compiledEdgeWheel) (compiledEdgeWheel, bool) {
+func edgeWheelInBounds(pt point, bounds rect, input string, rules map[string]compiledEdgeWheel, scale float64) (compiledEdgeWheel, bool) {
 	// 延伸后的角落可能与直边重叠；按固定顺序优先匹配角落，避免 map 遍历导致动作随机。
 	for _, zone := range []string{"topLeft", "topRight", "bottomLeft", "bottomRight", "top", "bottom", "left", "right"} {
 		rule, ok := rules[zone+":"+input]
-		if ok && pointInEdgeBounds(pt, bounds, zone, rule.marginPX, rule.endMarginPX, rule.cornerExtendPX) {
+		if ok && pointInEdgeBounds(pt, bounds, zone,
+			int(physicalPixels(float64(rule.marginPX), scale)),
+			int(physicalPixels(float64(rule.endMarginPX), scale)),
+			int(physicalPixels(float64(rule.cornerExtendPX), scale))) {
 			return rule, true
 		}
 	}

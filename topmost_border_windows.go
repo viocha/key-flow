@@ -4,7 +4,6 @@ package main
 
 import (
 	"fmt"
-	"math"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -51,7 +50,6 @@ var (
 	procTopmostBorderUnhookWinEvent        = user32.NewProc("UnhookWinEvent")
 	procTopmostBorderIsWindowVisible       = user32.NewProc("IsWindowVisible")
 	procTopmostBorderIsIconic              = user32.NewProc("IsIconic")
-	procTopmostBorderGetDpiForWindow       = user32.NewProc("GetDpiForWindow")
 	procTopmostBorderBeginPaint            = user32.NewProc("BeginPaint")
 	procTopmostBorderEndPaint              = user32.NewProc("EndPaint")
 	procTopmostBorderGetClientRect         = user32.NewProc("GetClientRect")
@@ -268,11 +266,7 @@ func (m *topmostBorderManager) updateLocked(border *topmostBorder) {
 		return
 	}
 
-	dpi, _, _ := procTopmostBorderGetDpiForWindow.Call(uintptr(border.target))
-	if dpi == 0 {
-		dpi = 96
-	}
-	thickness := int32(math.Round(float64(border.size) * float64(dpi) / 96.0))
+	thickness := physicalPixels(float64(border.size), windowScale(border.target))
 	if thickness < 1 {
 		thickness = 1
 	}

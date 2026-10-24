@@ -96,8 +96,7 @@ func (s *windowsInputState) handleMouse(message uint32, data *msLLHookStruct) bo
 			!trigger.used &&
 			!trigger.mousePassthrough &&
 			message == wmMouseMove &&
-			(math.Abs(float64(pt.X-trigger.mouseStart.X)) > 10 ||
-				math.Abs(float64(pt.Y-trigger.mouseStart.Y)) > 10) {
+			mouseDragExceeded(trigger.mouseStart, pt, dpiScaleAtPoint(pt)) {
 			if trigger.timer != nil {
 				trigger.timer.Stop()
 			}
@@ -271,8 +270,9 @@ func (s *windowsInputState) handleMouse(message uint32, data *msLLHookStruct) bo
 				X: float64(pt.X),
 				Y: float64(pt.Y),
 			}},
-			targetWindow: targetWindowAtPoint(pt),
-			timeout:      config.gestureTimeout,
+			logicalPoints: []GesturePoint{{}},
+			targetWindow:  targetWindowAtPoint(pt),
+			timeout:       config.gestureTimeout,
 		}
 		s.gesture = gesture
 		s.armGestureTimeoutLocked(gesture)
@@ -472,31 +472,22 @@ func inputForWheel(message uint32, sign int) string {
 	return inputForWheelSign(sign)
 }
 
+func mouseDragExceeded(start, current point, scale float64) bool {
+	threshold := float64(physicalPixels(10, scale))
+	return math.Abs(float64(current.X-start.X)) > threshold || math.Abs(float64(current.Y-start.Y)) > threshold
+}
+
 func (s *windowsInputState) updateGestureLocked(gesture *activeGesture, pt point) {
 	if gesture == nil || !gesture.config.enabled {
 		return
 	}
 
-	current := GesturePoint{X: float64(pt.X), Y: float64(pt.Y)}
-	if len(gesture.points) == 0 {
-		gesture.points = append(gesture.points, current)
+	if !gesture.appendSample(pt, dpiScaleAtPoint(pt)) {
 		return
 	}
-
-	last := gesture.points[len(gesture.points)-1]
-	if math.Hypot(current.X-last.X, current.Y-last.Y) < 2 {
-		return
-	}
-	gesture.points = append(gesture.points, current)
 	s.armGestureTimeoutLocked(gesture)
-	if len(gesture.points) > 512 {
-		gesture.points = append(
-			[]GesturePoint{gesture.points[0]},
-			gesture.points[len(gesture.points)-510:]...,
-		)
-	}
-
-	start := gesture.points[0]
+	current := gesture.logicalPoints[len(gesture.logicalPoints)-1]
+	start := gesture.logicalPoints[0]
 	justActivated := false
 	if !gesture.active {
 		if math.Hypot(current.X-start.X, current.Y-start.Y) < float64(gesture.config.startDistancePX) {
@@ -507,7 +498,7 @@ func (s *windowsInputState) updateGestureLocked(gesture *activeGesture, pt point
 	}
 
 	directions := gestureDirectionsFromPoints(
-		gesture.points,
+		gesture.logicalPoints,
 		float64(gesture.config.segmentDistancePX),
 	)
 	label := "无动作"
@@ -530,6 +521,35 @@ func (s *windowsInputState) updateGestureLocked(gesture *activeGesture, pt point
 			Label:   label,
 		})
 	}
+}
+
+// 保留原始轨迹用于绘制，按每次采样所在显示器累计逻辑位移用于识别。
+func (gesture *activeGesture) appendSample(pt point, scale float64) bool {
+	current := GesturePoint{X: float64(pt.X), Y: float64(pt.Y)}
+	if len(gesture.points) == 0 {
+		gesture.points = append(gesture.points, current)
+		gesture.logicalPoints = append(gesture.logicalPoints, GesturePoint{})
+		return false
+	}
+	if scale <= 0 {
+		scale = 1
+	}
+	last := gesture.points[len(gesture.points)-1]
+	dx, dy := (current.X-last.X)/scale, (current.Y-last.Y)/scale
+	if math.Hypot(dx, dy) < 2 {
+		return false
+	}
+	gesture.points = append(gesture.points, current)
+	logicalLast := gesture.logicalPoints[len(gesture.logicalPoints)-1]
+	gesture.logicalPoints = append(gesture.logicalPoints, GesturePoint{X: logicalLast.X + dx, Y: logicalLast.Y + dy})
+	if len(gesture.points) > 512 {
+		gesture.points = append(
+			[]GesturePoint{gesture.points[0]},
+			gesture.points[len(gesture.points)-510:]...,
+		)
+		gesture.logicalPoints = append([]GesturePoint{gesture.logicalPoints[0]}, gesture.logicalPoints[len(gesture.logicalPoints)-510:]...)
+	}
+	return true
 }
 
 func (s *windowsInputState) armGestureTimeoutLocked(gesture *activeGesture) {
@@ -574,7 +594,7 @@ func (s *windowsInputState) finishGestureLocked(gesture *activeGesture) {
 	}
 
 	directions := gestureDirectionsFromPoints(
-		gesture.points,
+		gesture.logicalPoints,
 		float64(gesture.config.segmentDistancePX),
 	)
 	if key, err := gestureKey(directions); err == nil {
