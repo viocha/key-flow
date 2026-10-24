@@ -24,7 +24,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
-import { Field, FieldLabel } from "@/components/ui/field"
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { NumberInput } from "@/components/ui/number-input"
 import { Separator } from "@/components/ui/separator"
@@ -43,18 +43,22 @@ import { showUndoDeleteToast } from "@/lib/undo-toast"
 export function EdgeWheelPanel({
   enabled,
   marginPx,
+  endMarginPx,
+  cornerExtendPx,
   rules,
   presets,
   onEnabledChange,
-  onMarginChange,
+  onSettingsChange,
   onChange,
 }: {
   enabled: boolean
   marginPx: number
+  endMarginPx: number
+  cornerExtendPx: number
   rules: EdgeWheelRule[]
   presets: ActionPreset[]
   onEnabledChange: (enabled: boolean) => void
-  onMarginChange: (marginPx: number) => void
+  onSettingsChange: (settings: { marginPx: number; endMarginPx: number; cornerExtendPx: number }) => void
   onChange: (rules: EdgeWheelRule[]) => void
 }) {
   const [dialog, setDialog] = useState<
@@ -62,7 +66,7 @@ export function EdgeWheelPanel({
   >({ open: false })
   const [settingsOpen, setSettingsOpen] = useState(false)
   const settingsDialog = useDialogTransition(settingsOpen, () => setSettingsOpen(false))
-  const [marginDraft, setMarginDraft] = useState(marginPx)
+  const [settingsDraft, setSettingsDraft] = useState({ marginPx, endMarginPx, cornerExtendPx })
   const rulesRef = useRef(rules)
   rulesRef.current = rules
   const reorder = useListReorder(rules, (rule) => rule.id, onChange)
@@ -117,7 +121,7 @@ export function EdgeWheelPanel({
             variant="outline"
             size="sm"
             onClick={() => {
-              setMarginDraft(marginPx)
+              setSettingsDraft({ marginPx, endMarginPx, cornerExtendPx })
               setSettingsOpen(true)
             }}
           >
@@ -193,16 +197,42 @@ export function EdgeWheelPanel({
           <DialogHeader>
             <DialogTitle>屏幕边缘设置</DialogTitle>
           </DialogHeader>
-          <Field>
-            <FieldLabel htmlFor="edge-wheel-margin">触发范围</FieldLabel>
-            <NumberInput
-              id="edge-wheel-margin"
-              min={1}
-              max={64}
-              value={marginDraft}
-              onValueChange={setMarginDraft}
-            />
-          </Field>
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="edge-wheel-margin">边缘感应距离（px）</FieldLabel>
+              <NumberInput
+                id="edge-wheel-margin"
+                min={1}
+                max={64}
+                value={settingsDraft.marginPx}
+                onValueChange={(value) => setSettingsDraft({ ...settingsDraft, marginPx: Math.round(value) })}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="edge-end-margin">边缘两端留空（px）</FieldLabel>
+              <NumberInput
+                id="edge-end-margin"
+                min={0}
+                max={16384}
+                step={1}
+                value={settingsDraft.endMarginPx}
+                onValueChange={(value) => setSettingsDraft({ ...settingsDraft, endMarginPx: Math.round(value) })}
+              />
+              <FieldDescription>每条边的两端各留出此距离，不触发边缘操作</FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="edge-corner-extend">角落延伸距离（px）</FieldLabel>
+              <NumberInput
+                id="edge-corner-extend"
+                min={0}
+                max={16384}
+                step={1}
+                value={settingsDraft.cornerExtendPx}
+                onValueChange={(value) => setSettingsDraft({ ...settingsDraft, cornerExtendPx: Math.round(value) })}
+              />
+              <FieldDescription>与边缘触发区重叠时，优先触发角落操作</FieldDescription>
+            </Field>
+          </FieldGroup>
           <DialogFooter>
             <Button
               type="button"
@@ -214,7 +244,7 @@ export function EdgeWheelPanel({
             <Button
               type="button"
               onClick={() => {
-                onMarginChange(marginDraft)
+                onSettingsChange(settingsDraft)
                 settingsDialog.requestClose()
               }}
             >

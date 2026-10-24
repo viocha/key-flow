@@ -149,6 +149,8 @@ export interface Profile {
     "gestures": GestureGroup[] | null;
     "edgeWheelsEnabled": boolean;
     "edgeWheelMarginPx": number;
+    "edgeWheelEndMarginPx": number;
+    "edgeWheelCornerExtendPx": number;
     "edgeWheels": EdgeWheelRule[] | null;
 }
 

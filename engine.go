@@ -37,13 +37,15 @@ type compiledMouseShortcut struct {
 }
 
 type compiledEdgeWheel struct {
-	zone       string
-	input      string
-	marginPX   int
-	wheelSteps int
-	recentApps bool
-	up         Action
-	down       Action
+	zone           string
+	input          string
+	marginPX       int
+	endMarginPX    int
+	cornerExtendPX int
+	wheelSteps     int
+	recentApps     bool
+	up             Action
+	down           Action
 }
 
 type compiledConfig struct {
@@ -519,11 +521,13 @@ func compileConfig(config AppConfig) (compiledConfig, error) {
 			key := rule.Zone + ":" + rule.Input
 			if rule.Adjustment == EdgeAdjustmentRecentApps {
 				compiled.edgeWheels[key] = compiledEdgeWheel{
-					zone:       rule.Zone,
-					input:      rule.Input,
-					marginPX:   profile.EdgeWheelMarginPX,
-					wheelSteps: rule.WheelSteps,
-					recentApps: true,
+					zone:           rule.Zone,
+					input:          rule.Input,
+					marginPX:       profile.EdgeWheelMarginPX,
+					endMarginPX:    profile.EdgeWheelEndMarginPX,
+					cornerExtendPX: profile.EdgeWheelCornerExtendPX,
+					wheelSteps:     rule.WheelSteps,
+					recentApps:     true,
 					up: Action{
 						Type: ActionKeyStroke,
 						Keys: []string{"Ctrl", "Shift", "Alt", "Tab"},
@@ -537,34 +541,40 @@ func compileConfig(config AppConfig) (compiledConfig, error) {
 			}
 			if rule.Adjustment == EdgeAdjustmentSwitchApps {
 				compiled.edgeWheels[key] = compiledEdgeWheel{
-					zone:       rule.Zone,
-					input:      rule.Input,
-					marginPX:   profile.EdgeWheelMarginPX,
-					wheelSteps: rule.WheelSteps,
-					up:         Action{Type: ActionWindow, WindowCommand: "previousWindow"},
-					down:       Action{Type: ActionWindow, WindowCommand: "nextWindow"},
+					zone:           rule.Zone,
+					input:          rule.Input,
+					marginPX:       profile.EdgeWheelMarginPX,
+					endMarginPX:    profile.EdgeWheelEndMarginPX,
+					cornerExtendPX: profile.EdgeWheelCornerExtendPX,
+					wheelSteps:     rule.WheelSteps,
+					up:             Action{Type: ActionWindow, WindowCommand: "previousWindow"},
+					down:           Action{Type: ActionWindow, WindowCommand: "nextWindow"},
 				}
 				continue
 			}
 			if rule.Adjustment == EdgeAdjustmentSwitchTabs {
 				compiled.edgeWheels[key] = compiledEdgeWheel{
-					zone:       rule.Zone,
-					input:      rule.Input,
-					marginPX:   profile.EdgeWheelMarginPX,
-					wheelSteps: rule.WheelSteps,
-					up:         Action{Type: ActionKeyStroke, Keys: []string{"Ctrl", "Shift", "Tab"}},
-					down:       Action{Type: ActionKeyStroke, Keys: []string{"Ctrl", "Tab"}},
+					zone:           rule.Zone,
+					input:          rule.Input,
+					marginPX:       profile.EdgeWheelMarginPX,
+					endMarginPX:    profile.EdgeWheelEndMarginPX,
+					cornerExtendPX: profile.EdgeWheelCornerExtendPX,
+					wheelSteps:     rule.WheelSteps,
+					up:             Action{Type: ActionKeyStroke, Keys: []string{"Ctrl", "Shift", "Tab"}},
+					down:           Action{Type: ActionKeyStroke, Keys: []string{"Ctrl", "Tab"}},
 				}
 				continue
 			}
 			if rule.Adjustment == EdgeAdjustmentPage {
 				compiled.edgeWheels[key] = compiledEdgeWheel{
-					zone:       rule.Zone,
-					input:      rule.Input,
-					marginPX:   profile.EdgeWheelMarginPX,
-					wheelSteps: rule.WheelSteps,
-					up:         Action{Type: ActionKeyStroke, Keys: []string{"PageUp"}},
-					down:       Action{Type: ActionKeyStroke, Keys: []string{"PageDown"}},
+					zone:           rule.Zone,
+					input:          rule.Input,
+					marginPX:       profile.EdgeWheelMarginPX,
+					endMarginPX:    profile.EdgeWheelEndMarginPX,
+					cornerExtendPX: profile.EdgeWheelCornerExtendPX,
+					wheelSteps:     rule.WheelSteps,
+					up:             Action{Type: ActionKeyStroke, Keys: []string{"PageUp"}},
+					down:           Action{Type: ActionKeyStroke, Keys: []string{"PageDown"}},
 				}
 				continue
 			}
@@ -574,12 +584,14 @@ func compileConfig(config AppConfig) (compiledConfig, error) {
 					return compiledConfig{}, fmt.Errorf("屏幕边缘 %s 的自定义动作不完整", rule.Zone)
 				}
 				compiled.edgeWheels[key] = compiledEdgeWheel{
-					zone:       rule.Zone,
-					input:      rule.Input,
-					marginPX:   profile.EdgeWheelMarginPX,
-					wheelSteps: rule.WheelSteps,
-					up:         *rule.Action,
-					down:       *rule.OppositeAction,
+					zone:           rule.Zone,
+					input:          rule.Input,
+					marginPX:       profile.EdgeWheelMarginPX,
+					endMarginPX:    profile.EdgeWheelEndMarginPX,
+					cornerExtendPX: profile.EdgeWheelCornerExtendPX,
+					wheelSteps:     rule.WheelSteps,
+					up:             *rule.Action,
+					down:           *rule.OppositeAction,
 				}
 				continue
 			}
@@ -589,12 +601,14 @@ func compileConfig(config AppConfig) (compiledConfig, error) {
 				actionType = ActionBrightness
 			}
 			compiled.edgeWheels[key] = compiledEdgeWheel{
-				zone:       rule.Zone,
-				input:      rule.Input,
-				marginPX:   profile.EdgeWheelMarginPX,
-				wheelSteps: rule.WheelSteps,
-				up:         Action{Type: actionType, Delta: rule.Step},
-				down:       Action{Type: actionType, Delta: -rule.Step},
+				zone:           rule.Zone,
+				input:          rule.Input,
+				marginPX:       profile.EdgeWheelMarginPX,
+				endMarginPX:    profile.EdgeWheelEndMarginPX,
+				cornerExtendPX: profile.EdgeWheelCornerExtendPX,
+				wheelSteps:     rule.WheelSteps,
+				up:             Action{Type: actionType, Delta: rule.Step},
+				down:           Action{Type: actionType, Delta: -rule.Step},
 			}
 		}
 	}

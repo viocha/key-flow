@@ -107,6 +107,60 @@ func TestDefaultConfigValidatesAndCompiles(t *testing.T) {
 	}
 }
 
+func TestGlobalEdgeSettingsApplyToAllRules(t *testing.T) {
+	for _, adjustment := range []EdgeAdjustmentType{
+		EdgeAdjustmentVolume, EdgeAdjustmentBrightness, EdgeAdjustmentRecentApps,
+		EdgeAdjustmentSwitchApps, EdgeAdjustmentSwitchTabs, EdgeAdjustmentPage, EdgeAdjustmentCustom,
+	} {
+		t.Run(string(adjustment), func(t *testing.T) {
+			config := defaultConfig()
+			config.Profiles[0].EdgeWheelEndMarginPX = 100
+			config.Profiles[0].EdgeWheelCornerExtendPX = 80
+			action := Action{Type: ActionKeyStroke, Keys: []string{"PageUp"}}
+			for _, zone := range []string{"top", "bottom", "left", "right", "topLeft", "topRight", "bottomLeft", "bottomRight"} {
+				config.Profiles[0].EdgeWheels = append(config.Profiles[0].EdgeWheels, EdgeWheelRule{
+					ID: zone, Enabled: true, Zone: zone,
+					Input: "wheelVertical", Adjustment: adjustment, Step: 5, WheelSteps: 1,
+					Action: &action, OppositeAction: &action,
+				})
+			}
+			config = cloneConfig(config)
+			compiled, err := compileConfig(config)
+			if err != nil {
+				t.Fatal(err)
+			}
+			engine := &InputEngine{compiled: compiled}
+			for key, rule := range engine.snapshot().edgeWheels {
+				if rule.endMarginPX != 100 || rule.cornerExtendPX != 80 {
+					t.Errorf("%s 未应用全局设置: 两端间距 %d，角落延伸 %d", key, rule.endMarginPX, rule.cornerExtendPX)
+				}
+			}
+		})
+	}
+}
+
+func TestValidateEdgeEndMargin(t *testing.T) {
+	for _, margin := range []int{-1, 0, 100, 16384, 16385} {
+		config := defaultConfig()
+		config.Profiles[0].EdgeWheelEndMarginPX = margin
+		err := validateConfig(config)
+		if valid := margin >= 0 && margin <= 16384; (err == nil) != valid {
+			t.Errorf("两端间距 %d，校验错误: %v", margin, err)
+		}
+	}
+}
+
+func TestValidateCornerExtension(t *testing.T) {
+	for _, distance := range []int{-1, 0, 100, 16384, 16385} {
+		config := defaultConfig()
+		config.Profiles[0].EdgeWheelCornerExtendPX = distance
+		err := validateConfig(config)
+		if valid := distance >= 0 && distance <= 16384; (err == nil) != valid {
+			t.Errorf("角落延伸距离 %d，校验错误: %v", distance, err)
+		}
+	}
+}
+
 func TestCompileConfigUsesDefaultKeyInterval(t *testing.T) {
 	config := defaultConfig()
 	config.Settings.DefaultKeyIntervalMS = 25

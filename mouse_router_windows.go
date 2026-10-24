@@ -237,10 +237,7 @@ func (s *windowsInputState) handleMouse(message uint32, data *msLLHookStruct) bo
 		if message == wmMouseHWheel {
 			edgeInput = "wheelHorizontal"
 		}
-		for _, rule := range config.edgeWheels {
-			if rule.input != edgeInput || !pointInEdgeZone(pt, rule.zone, rule.marginPX) {
-				continue
-			}
+		if rule, ok := edgeWheelAtPoint(pt, edgeInput, config.edgeWheels); ok {
 			count := s.wheel.consume("edge:"+rule.zone+":"+input, wheelDelta(mouseData), rule.wheelSteps)
 			if count > 0 {
 				context := captureActionContext(targetWindowAtPoint(pt), pt)

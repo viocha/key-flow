@@ -335,7 +335,13 @@ func validateConfig(config AppConfig) error {
 		}
 
 		if profile.EdgeWheelMarginPX < 1 || profile.EdgeWheelMarginPX > 64 {
-			return errors.New("屏幕边缘触发范围须为 1–64 像素")
+			return errors.New("屏幕边缘感应距离须为 1–64 像素")
+		}
+		if profile.EdgeWheelEndMarginPX < 0 || profile.EdgeWheelEndMarginPX > 16384 {
+			return errors.New("边缘两端留空须为 0–16384 像素")
+		}
+		if profile.EdgeWheelCornerExtendPX < 0 || profile.EdgeWheelCornerExtendPX > 16384 {
+			return errors.New("角落延伸距离须为 0–16384 像素")
 		}
 		edgeInputs := map[string]struct{}{}
 		for _, rule := range profile.EdgeWheels {

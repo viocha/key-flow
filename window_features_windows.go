@@ -716,9 +716,27 @@ func monitorRectAtPoint(pt point) (rect, bool) {
 	return info.Monitor, ok != 0
 }
 
-func pointInEdgeZone(pt point, zone string, margin int) bool {
+func edgeWheelAtPoint(pt point, input string, rules map[string]compiledEdgeWheel) (compiledEdgeWheel, bool) {
 	bounds, ok := monitorRectAtPoint(pt)
 	if !ok {
+		return compiledEdgeWheel{}, false
+	}
+	return edgeWheelInBounds(pt, bounds, input, rules)
+}
+
+func edgeWheelInBounds(pt point, bounds rect, input string, rules map[string]compiledEdgeWheel) (compiledEdgeWheel, bool) {
+	// 延伸后的角落可能与直边重叠；按固定顺序优先匹配角落，避免 map 遍历导致动作随机。
+	for _, zone := range []string{"topLeft", "topRight", "bottomLeft", "bottomRight", "top", "bottom", "left", "right"} {
+		rule, ok := rules[zone+":"+input]
+		if ok && pointInEdgeBounds(pt, bounds, zone, rule.marginPX, rule.endMarginPX, rule.cornerExtendPX) {
+			return rule, true
+		}
+	}
+	return compiledEdgeWheel{}, false
+}
+
+func pointInEdgeBounds(pt point, bounds rect, zone string, margin, endMargin, cornerExtend int) bool {
+	if pt.X < bounds.Left || pt.X >= bounds.Right || pt.Y < bounds.Top || pt.Y >= bounds.Bottom {
 		return false
 	}
 	if margin < 1 {
@@ -728,24 +746,31 @@ func pointInEdgeZone(pt point, zone string, margin int) bool {
 	right := int(bounds.Right-1-pt.X) <= margin
 	top := int(pt.Y-bounds.Top) <= margin
 	bottom := int(bounds.Bottom-1-pt.Y) <= margin
+	cornerReach := max(margin, cornerExtend)
+	nearLeft := int(pt.X-bounds.Left) <= cornerReach
+	nearRight := int(bounds.Right-1-pt.X) <= cornerReach
+	nearTop := int(pt.Y-bounds.Top) <= cornerReach
+	nearBottom := int(bounds.Bottom-1-pt.Y) <= cornerReach
+	horizontalMiddle := !left && !right && int(pt.X-bounds.Left) >= endMargin && int(bounds.Right-1-pt.X) >= endMargin
+	verticalMiddle := !top && !bottom && int(pt.Y-bounds.Top) >= endMargin && int(bounds.Bottom-1-pt.Y) >= endMargin
 
 	switch zone {
 	case "topLeft":
-		return top && left
+		return (top && nearLeft) || (left && nearTop)
 	case "topRight":
-		return top && right
+		return (top && nearRight) || (right && nearTop)
 	case "bottomLeft":
-		return bottom && left
+		return (bottom && nearLeft) || (left && nearBottom)
 	case "bottomRight":
-		return bottom && right
+		return (bottom && nearRight) || (right && nearBottom)
 	case "top":
-		return top && !left && !right
+		return top && horizontalMiddle
 	case "bottom":
-		return bottom && !left && !right
+		return bottom && horizontalMiddle
 	case "left":
-		return left && !top && !bottom
+		return left && verticalMiddle
 	case "right":
-		return right && !top && !bottom
+		return right && verticalMiddle
 	default:
 		return false
 	}

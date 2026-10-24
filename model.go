@@ -138,15 +138,17 @@ type EdgeWheelRule struct {
 }
 
 type Profile struct {
-	ID                string          `json:"id"`
-	Name              string          `json:"name"`
-	HotkeysEnabled    bool            `json:"hotkeysEnabled"`
-	Hotkeys           []HotkeyRule    `json:"hotkeys"`
-	Layers            []TriggerLayer  `json:"layers"`
-	Gestures          []GestureGroup  `json:"gestures"`
-	EdgeWheelsEnabled bool            `json:"edgeWheelsEnabled"`
-	EdgeWheelMarginPX int             `json:"edgeWheelMarginPx"`
-	EdgeWheels        []EdgeWheelRule `json:"edgeWheels"`
+	ID                      string          `json:"id"`
+	Name                    string          `json:"name"`
+	HotkeysEnabled          bool            `json:"hotkeysEnabled"`
+	Hotkeys                 []HotkeyRule    `json:"hotkeys"`
+	Layers                  []TriggerLayer  `json:"layers"`
+	Gestures                []GestureGroup  `json:"gestures"`
+	EdgeWheelsEnabled       bool            `json:"edgeWheelsEnabled"`
+	EdgeWheelMarginPX       int             `json:"edgeWheelMarginPx"`
+	EdgeWheelEndMarginPX    int             `json:"edgeWheelEndMarginPx"`
+	EdgeWheelCornerExtendPX int             `json:"edgeWheelCornerExtendPx"`
+	EdgeWheels              []EdgeWheelRule `json:"edgeWheels"`
 }
 
 type Settings struct {

@@ -726,6 +726,8 @@ function App() {
             <EdgeWheelPanel
               enabled={profile.edgeWheelsEnabled}
               marginPx={profile.edgeWheelMarginPx}
+              endMarginPx={profile.edgeWheelEndMarginPx}
+              cornerExtendPx={profile.edgeWheelCornerExtendPx}
               rules={profile.edgeWheels}
               presets={presets}
               onEnabledChange={(edgeWheelsEnabled) =>
@@ -734,10 +736,12 @@ function App() {
                   edgeWheelsEnabled,
                 }))
               }
-              onMarginChange={(edgeWheelMarginPx) =>
+              onSettingsChange={({ marginPx, endMarginPx, cornerExtendPx }) =>
                 updateProfile((current) => ({
                   ...current,
-                  edgeWheelMarginPx,
+                  edgeWheelMarginPx: marginPx,
+                  edgeWheelEndMarginPx: endMarginPx,
+                  edgeWheelCornerExtendPx: cornerExtendPx,
                 }))
               }
               onChange={(edgeWheels) =>
