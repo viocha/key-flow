@@ -3,7 +3,9 @@
 package main
 
 import (
+	"log"
 	"math"
+	"runtime"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -39,6 +41,7 @@ const (
 	gestureOverlayFontWeight       = 500
 	gestureOverlayDefaultCharset   = 1
 	gestureOverlayClearTypeQuality = 4
+	gestureOverlayUpdateMessage    = 0x8002
 
 	gestureOverlayColorKey    = 0x00FF00FF
 	gestureOverlayPathBorder  = 0x00947724 // RGB(36, 119, 148)，主题色深色外沿
@@ -121,8 +124,12 @@ type gestureOverlayPointF struct {
 }
 
 type nativeGestureOverlay struct {
-	hwnd windows.Handle
-	mu   sync.Mutex
+	hwnd     windows.Handle
+	mu       sync.Mutex
+	threadID uintptr
+	finished chan struct{}
+	closed   bool
+	pending  *GestureOverlayEvent
 
 	bounds        rect
 	visible       bool
@@ -139,6 +146,35 @@ type nativeGestureOverlay struct {
 }
 
 func createNativeGestureOverlay() *nativeGestureOverlay {
+	ready := make(chan *nativeGestureOverlay, 1)
+	go func() {
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+		overlay := newNativeGestureOverlay()
+		ready <- overlay
+		if overlay == nil {
+			return
+		}
+		defer close(overlay.finished)
+		defer overlay.destroyWindow()
+		var message msg
+		for {
+			result, _, err := procGetMessageW.Call(uintptr(unsafe.Pointer(&message)), 0, 0, 0)
+			if int32(result) <= 0 {
+				if int32(result) < 0 {
+					log.Printf("手势浮层消息循环异常: %v", err)
+				}
+				return
+			}
+			procTranslateMessage.Call(uintptr(unsafe.Pointer(&message)))
+			procDispatchMessageW.Call(uintptr(unsafe.Pointer(&message)))
+		}
+	}()
+	return <-ready
+}
+
+// 创建、绘制和销毁均由同一条固定线程处理，避免跨线程窗口调用阻塞。
+func newNativeGestureOverlay() *nativeGestureOverlay {
 	className, err := windows.UTF16PtrFromString("KeyRunnerGestureOverlayWindow")
 	if err != nil {
 		return nil
@@ -152,7 +188,7 @@ func createNativeGestureOverlay() *nativeGestureOverlay {
 	procRegisterClassW.Call(uintptr(unsafe.Pointer(&wndClass)))
 
 	bounds := virtualScreenRect()
-	hwnd, _, _ := procCreateWindowExW.Call(
+	hwnd, _, createErr := procCreateWindowExW.Call(
 		gestureOverlayWSExTopmost|
 			gestureOverlayWSExTransparent|
 			gestureOverlayWSExToolWindow|
@@ -171,12 +207,16 @@ func createNativeGestureOverlay() *nativeGestureOverlay {
 		0,
 	)
 	if hwnd == 0 {
+		log.Printf("创建手势浮层失败: %v", createErr)
 		return nil
 	}
 
+	threadID, _, _ := procGetCurrentThreadID.Call()
 	overlay := &nativeGestureOverlay{
-		hwnd:   windows.Handle(hwnd),
-		bounds: bounds,
+		hwnd:     windows.Handle(hwnd),
+		bounds:   bounds,
+		threadID: threadID,
+		finished: make(chan struct{}),
 	}
 	activeGestureOverlay = overlay
 
@@ -204,16 +244,35 @@ func createNativeGestureOverlay() *nativeGestureOverlay {
 		overlay.presentRectLocked(full)
 	}
 	overlay.mu.Unlock()
+	log.Printf("手势浮层已启动: thread=%d", threadID)
 
 	return overlay
 }
 
 func (o *nativeGestureOverlay) Destroy() {
-	if o == nil || o.hwnd == 0 {
+	if o == nil {
 		return
 	}
-
 	o.mu.Lock()
+	if !o.closed {
+		o.closed = true
+		const wmQuit = 0x0012
+		if ok, _, err := procPostThreadMessageW.Call(o.threadID, wmQuit, 0, 0); ok == 0 {
+			o.closed = false
+			o.mu.Unlock()
+			log.Printf("关闭手势浮层失败: %v", err)
+			return
+		}
+	}
+	finished := o.finished
+	o.mu.Unlock()
+	<-finished
+}
+
+func (o *nativeGestureOverlay) destroyWindow() {
+	o.mu.Lock()
+	o.closed = true
+	o.pending = nil
 	o.destroyBackBufferLocked()
 	o.mu.Unlock()
 
@@ -221,21 +280,58 @@ func (o *nativeGestureOverlay) Destroy() {
 	if activeGestureOverlay == o {
 		activeGestureOverlay = nil
 	}
+	o.mu.Lock()
 	o.hwnd = 0
+	o.mu.Unlock()
 }
 
 func (o *nativeGestureOverlay) Update(event GestureOverlayEvent) {
-	if o == nil || o.hwnd == 0 {
+	if o == nil {
 		return
 	}
-
 	o.mu.Lock()
 	defer o.mu.Unlock()
+	if o.closed || o.hwnd == 0 {
+		return
+	}
+	if o.pending != nil && event.Visible && !event.Reset && o.pending.Visible {
+		event.Reset = o.pending.Reset
+		event.Points = append(o.pending.Points, event.Points...)
+	} else {
+		event.Points = append([]GesturePoint(nil), event.Points...)
+	}
+	if len(event.Points) > 1024 {
+		event.Points = append(event.Points[:1:1], event.Points[len(event.Points)-1023:]...)
+	}
+	post := o.pending == nil
+	o.pending = &event
+	if post {
+		if ok, _, err := procPostMessageW.Call(uintptr(o.hwnd), gestureOverlayUpdateMessage, 0, 0); ok == 0 {
+			o.pending = nil
+			log.Printf("更新手势浮层失败: %v", err)
+		}
+	}
+}
+
+func (o *nativeGestureOverlay) renderPending() {
+	o.mu.Lock()
+	event := o.pending
+	o.pending = nil
+	closed := o.closed
+	o.mu.Unlock()
+	if event != nil && !closed {
+		o.render(*event)
+	}
+}
+
+func (o *nativeGestureOverlay) render(event GestureOverlayEvent) {
+	if o.hwnd == 0 {
+		return
+	}
 
 	bounds := virtualScreenRect()
 	boundsChanged := bounds != o.bounds
 	if boundsChanged {
-		o.bounds = bounds
 		procSetWindowPos.Call(
 			uintptr(o.hwnd),
 			^uintptr(0),
@@ -245,6 +341,15 @@ func (o *nativeGestureOverlay) Update(event GestureOverlayEvent) {
 			uintptr(bounds.Bottom-bounds.Top),
 			swpNoActivate,
 		)
+	} else if event.Visible && (event.Reset || !o.visible) {
+		procSetWindowPos.Call(uintptr(o.hwnd), ^uintptr(0), 0, 0, 0, 0, swpNoMove|swpNoSize|swpNoActivate)
+	}
+
+	// 调整窗口可能同步触发重绘，不能在持有绘制锁时调用。
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if boundsChanged {
+		o.bounds = bounds
 		o.destroyBackBufferLocked()
 	}
 
@@ -295,18 +400,6 @@ func (o *nativeGestureOverlay) Update(event GestureOverlayEvent) {
 	}
 
 	if event.Reset || !o.visible {
-		// 置顶窗口可能后来进入 topmost Z-order 并盖住常驻 Overlay。
-		// 手势开始时只提升一次，不在每个鼠标移动事件上调整 Z-order。
-		procSetWindowPos.Call(
-			uintptr(o.hwnd),
-			^uintptr(0),
-			0,
-			0,
-			0,
-			0,
-			swpNoMove|swpNoSize|swpNoActivate,
-		)
-
 		dirty := unionOverlayRect(o.pathRect, o.labelRect)
 		if !overlayRectEmpty(dirty) {
 			o.clearRectLocked(dirty)
@@ -549,6 +642,11 @@ func (o *nativeGestureOverlay) presentRectLocked(value rect) {
 
 func gestureOverlayWndProc(hwnd uintptr, message uint32, wParam, lParam uintptr) uintptr {
 	switch message {
+	case gestureOverlayUpdateMessage:
+		if overlay := activeGestureOverlay; overlay != nil && uintptr(overlay.hwnd) == hwnd {
+			overlay.renderPending()
+		}
+		return 0
 	case gestureOverlayWMEraseBkgnd:
 		return 1
 	case gestureOverlayWMNCHitTest:
