@@ -69,6 +69,63 @@ func capsLockTestState() *windowsInputState {
 	}
 }
 
+func TestStaleWinModifierRecoversCapsLockLayer(t *testing.T) {
+	state := capsLockTestState()
+	state.down[vkLWin] = true
+	state.reconcileModifiers(vkCapital, func(uint32) bool { return false })
+	if state.modifierDownLocked("Win") {
+		t.Fatal("已经松开的 Win 键不能继续参与 Layer 快捷键匹配")
+	}
+	tasksBefore := len(state.engine.tasks)
+	state.handleKeyboard(wmKeyDown, vkCapital)
+	if !state.handleKeyboard(wmKeyDown, 'H') || len(state.engine.tasks) != tasksBefore+1 {
+		t.Fatal("清理 Win 残留状态后应能执行 CapsLock Layer 映射")
+	}
+	state.handleKeyboard(wmKeyUp, 'H')
+	state.handleKeyboard(wmKeyUp, vkCapital)
+}
+
+func TestStaleWinModifierRecoversMouseLayer(t *testing.T) {
+	state := capsLockTestState()
+	state.engine.compiled.layers["MouseRight"] = compiledLayer{
+		hold: time.Second,
+		mouseShortcuts: map[string]compiledMouseShortcut{
+			"left": {action: Action{Type: ActionKeyStroke, Keys: []string{"Escape"}}},
+		},
+	}
+	state.down[vkLWin] = true
+	state.reconcileModifiers(0, func(uint32) bool { return false })
+	tasksBefore := len(state.engine.tasks)
+	data := &msLLHookStruct{}
+	if !state.handleMouse(wmRButtonDown, data) || !state.handleMouse(wmLButtonDown, data) || len(state.engine.tasks) != tasksBefore+1 {
+		t.Fatal("鼠标输入也应清理 Win 残留状态并恢复右键 Layer 组合")
+	}
+	state.handleMouse(wmLButtonUp, data)
+	state.handleMouse(wmRButtonUp, data)
+}
+
+func TestReconcileModifiersPreservesHeldAndSuppressedKeys(t *testing.T) {
+	state := capsLockTestState()
+	for _, vk := range []uint32{vkLWin, vkLShift, vkShift, vkLControl, vkLMenu, 'H'} {
+		state.down[vk] = true
+	}
+	state.suppressedModifiers[vkLMenu] = true
+	state.swallowKeyUp[vkLMenu] = true
+	state.swallowKeyUp[vkLControl] = true
+	state.reconcileModifiers(vkLShift, func(vk uint32) bool { return vk == vkLWin })
+	for _, vk := range []uint32{vkLWin, vkLShift, vkShift, vkLMenu, 'H'} {
+		if !state.down[vk] {
+			t.Errorf("仍按住、当前事件、主动拦截或普通按键不应清除: 0x%X", vk)
+		}
+	}
+	if state.down[vkLControl] || state.swallowKeyUp[vkLControl] {
+		t.Fatal("已松开的 Ctrl 键及其松开拦截标记应一起清理")
+	}
+	if !state.suppressedModifiers[vkLMenu] || !state.swallowKeyUp[vkLMenu] {
+		t.Fatal("主动拦截的 Alt 键状态应保留到真实松开事件")
+	}
+}
+
 func TestCapsLockOriginalShortcutInput(t *testing.T) {
 	for _, shift := range []uint32{vkLShift, vkRShift} {
 		state := capsLockTestState()

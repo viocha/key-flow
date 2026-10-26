@@ -28,10 +28,12 @@ func main() {
 	logFile, logErr := os.OpenFile(filepath.Join(filepath.Dir(store.Path()), "key-flow.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if logErr == nil {
 		defer logFile.Close()
-		log.SetOutput(io.MultiWriter(os.Stderr, logFile))
+		// 无控制台启动时标准错误可能不可写，必须先写入日志文件。
+		log.SetOutput(io.MultiWriter(logFile, os.Stderr))
 	} else {
 		log.Printf("打开运行日志失败: %v", logErr)
 	}
+	log.Printf("Key Flow 启动: pid=%d, hidden=%t", os.Getpid(), startupMode)
 
 	engine, err := NewInputEngine(store.Snapshot())
 	if err != nil {

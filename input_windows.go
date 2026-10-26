@@ -248,8 +248,12 @@ var keyboardHookCallback = syscall.NewCallback(func(code int, wParam uintptr, lP
 	data := (*kbdLLHookStruct)(unsafe.Pointer(lParam))
 	if data.DwExtraInfo != keyRunnerInputMarker {
 		threadID, _, _ := procGetCurrentThreadID.Call()
-		if value, ok := inputHookStates.Load(threadID); ok && value.(*windowsInputState).handleKeyboard(uint32(wParam), data.VkCode) {
-			return 1
+		if value, ok := inputHookStates.Load(threadID); ok {
+			state := value.(*windowsInputState)
+			state.reconcileModifiers(data.VkCode, keyPressed)
+			if state.handleKeyboard(uint32(wParam), data.VkCode) {
+				return 1
+			}
 		}
 	}
 	return callNextHook(code, wParam, lParam)
@@ -261,8 +265,12 @@ var mouseHookCallback = syscall.NewCallback(func(code int, wParam uintptr, lPara
 	data := (*msLLHookStruct)(unsafe.Pointer(lParam))
 	if data.DwExtraInfo != keyRunnerInputMarker {
 		threadID, _, _ := procGetCurrentThreadID.Call()
-		if value, ok := inputHookStates.Load(threadID); ok && value.(*windowsInputState).handleMouse(uint32(wParam), data) {
-			return 1
+		if value, ok := inputHookStates.Load(threadID); ok {
+			state := value.(*windowsInputState)
+			state.reconcileModifiers(0, keyPressed)
+			if state.handleMouse(uint32(wParam), data) {
+				return 1
+			}
 		}
 	}
 	return callNextHook(code, wParam, lParam)
@@ -397,6 +405,33 @@ func startPlatformInputEngine(engine *InputEngine) (func(), error) {
 func callNextHook(code int, wParam, lParam uintptr) uintptr {
 	result, _, _ := procCallNextHookEx.Call(0, uintptr(code), wParam, lParam)
 	return result
+}
+
+// 松开事件可能被其他程序拦截或发生在安全桌面，按后续输入校验修饰键缓存。
+func (s *windowsInputState) reconcileModifiers(currentVK uint32, pressed func(uint32) bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return
+	}
+	currentModifier := keyNameFromVK(currentVK)
+	var released []string
+	for vk := range s.down {
+		modifier := keyNameFromVK(vk)
+		// Hook 执行时当前按键的系统状态尚未更新；Layer 主动拦截的
+		// 修饰键也不会进入系统按下状态，必须保留这两种状态。
+		if !isModifierKey(modifier) || modifier == currentModifier || s.suppressedModifiers[vk] || pressed(vk) {
+			continue
+		}
+		delete(s.down, vk)
+		delete(s.swallowKeyUp, vk)
+		released = append(released, fmt.Sprintf("%s(0x%X)", modifier, vk))
+	}
+	if len(released) > 0 {
+		s.engine.enqueueTask(func() {
+			log.Printf("已清理丢失松开事件的修饰键状态: %s", strings.Join(released, ", "))
+		})
+	}
 }
 
 func (s *windowsInputState) handleKeyboard(message uint32, vk uint32) bool {
