@@ -331,12 +331,12 @@ func rememberMinimizedWindow(hwnd windows.Handle) {
 	}
 }
 
-func restoreLastMinimizedWindow() {
+func restoreLastMinimizedWindow() error {
 	for {
 		minimizedWindowsMu.Lock()
 		if len(minimizedWindows) == 0 {
 			minimizedWindowsMu.Unlock()
-			return
+			return nil
 		}
 		index := len(minimizedWindows) - 1
 		hwnd := minimizedWindows[index]
@@ -351,8 +351,11 @@ func restoreLastMinimizedWindow() {
 		if iconic == 0 {
 			continue
 		}
-		_ = activateSwitchWindow(hwnd)
-		return
+		if err := activateSwitchWindow(hwnd); err != nil {
+			rememberMinimizedWindow(hwnd)
+			return err
+		}
+		return nil
 	}
 }
 
@@ -437,11 +440,8 @@ func activateSwitchWindow(target windows.Handle) error {
 
 	attachedForeground := false
 	if foregroundThread != 0 && foregroundThread != currentThread {
-		ok, _, callErr := procAttachThreadInput.Call(currentThread, foregroundThread, 1)
-		if ok == 0 {
-			return fmt.Errorf("关联前台输入线程失败: %v", callErr)
-		}
-		attachedForeground = true
+		ok, _, _ := procAttachThreadInput.Call(currentThread, foregroundThread, 1)
+		attachedForeground = ok != 0
 	}
 	defer func() {
 		if attachedForeground {
@@ -451,11 +451,8 @@ func activateSwitchWindow(target windows.Handle) error {
 
 	attachedTarget := false
 	if targetThread != currentThread && targetThread != foregroundThread {
-		ok, _, callErr := procAttachThreadInput.Call(currentThread, targetThread, 1)
-		if ok == 0 {
-			return fmt.Errorf("关联目标输入线程失败: %v", callErr)
-		}
-		attachedTarget = true
+		ok, _, _ := procAttachThreadInput.Call(currentThread, targetThread, 1)
+		attachedTarget = ok != 0
 	}
 	defer func() {
 		if attachedTarget {
@@ -463,7 +460,12 @@ func activateSwitchWindow(target windows.Handle) error {
 		}
 	}()
 
-	// 此时当前线程与前台/目标窗口共享输入队列；先取得前台，再恢复最小化状态。
+	// 系统设置等窗口可能拒绝关联输入队列；恢复窗口不能依赖关联成功。
+	// 先恢复可见状态，再尝试激活，避免无法激活时连恢复也被跳过。
+	iconic, _, _ := procIsIconic.Call(uintptr(target))
+	if iconic != 0 {
+		procShowWindow.Call(uintptr(target), swRestore)
+	}
 	// 不调用 SwitchToThisWindow，避免 Shell 把切换当成 Alt-Tab 风格的注意提示。
 	ok, _, callErr := procSetForegroundWindow.Call(uintptr(target))
 	active, _, _ := procGetForegroundWindow.Call()
@@ -471,10 +473,6 @@ func activateSwitchWindow(target windows.Handle) error {
 		return fmt.Errorf("切换前台窗口失败: %v", callErr)
 	}
 
-	iconic, _, _ := procIsIconic.Call(uintptr(target))
-	if iconic != 0 {
-		procShowWindow.Call(uintptr(target), swRestore)
-	}
 	procBringWindowToTop.Call(uintptr(target))
 
 	active, _, _ = procGetForegroundWindow.Call()
@@ -522,8 +520,7 @@ func executeWindowActionForWindow(action Action, hwnd windows.Handle) error {
 	case "nextWindow":
 		return switchWindow(1)
 	case "restoreMinimized":
-		restoreLastMinimizedWindow()
-		return nil
+		return restoreLastMinimizedWindow()
 	}
 	if hwnd == 0 {
 		return nil
